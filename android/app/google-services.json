@@ -1,0 +1,143 @@
+{
+  "project_info": {
+    "project_number": "1078627613892",
+    "firebase_url": "https://au-fee-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "au-fee",
+    "storage_bucket": "au-fee.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1078627613892:android:3984e239df4865468a9d91",
+        "android_client_info": {
+          "package_name": "com.annauniv.auexamfee"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1078627613892-q3p1jjghq3259vlmlbgja488v6s8i8a8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.annauniv.auexamfee",
+            "certificate_hash": "e0f95171bf4e0d839b17e7d865539b27bfdccf7b"
+          }
+        },
+        {
+          "client_id": "1078627613892-sa55h893jl7n7cv6qmpnustak5375v6h.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.annauniv.auexamfee",
+            "certificate_hash": "06c9228af83470a015b8690d6fe34d273405cbad"
+          }
+        },
+        {
+          "client_id": "1078627613892-s5lqj8cvc3pk428opob1hul18205ngus.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDs6V4w-WFIA3N4UqQ1TCLGOjDL_5JCYEM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1078627613892-s5lqj8cvc3pk428opob1hul18205ngus.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1078627613892-4jrp5kvgb60s6dsl1u0j9aou4tdr4rd1.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.aufee"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1078627613892:android:cc933dc31c93cc2a8a9d91",
+        "android_client_info": {
+          "package_name": "com.example.au_fee"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1078627613892-s5lqj8cvc3pk428opob1hul18205ngus.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDs6V4w-WFIA3N4UqQ1TCLGOjDL_5JCYEM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1078627613892-s5lqj8cvc3pk428opob1hul18205ngus.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1078627613892-4jrp5kvgb60s6dsl1u0j9aou4tdr4rd1.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.aufee"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1078627613892:android:c2da7d8b7a6ea4fe8a9d91",
+        "android_client_info": {
+          "package_name": "com.example.au_fee_admin"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1078627613892-3pkc1gej7dhajs0etoj7u771fkbjkoap.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.au_fee_admin",
+            "certificate_hash": "e0f95171bf4e0d839b17e7d865539b27bfdccf7b"
+          }
+        },
+        {
+          "client_id": "1078627613892-s5lqj8cvc3pk428opob1hul18205ngus.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDs6V4w-WFIA3N4UqQ1TCLGOjDL_5JCYEM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1078627613892-s5lqj8cvc3pk428opob1hul18205ngus.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1078627613892-4jrp5kvgb60s6dsl1u0j9aou4tdr4rd1.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.aufee"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

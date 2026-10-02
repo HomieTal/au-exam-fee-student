@@ -1,0 +1,43 @@
+rules_version = '2';
+
+// AU Exam Fee – Firebase Storage rules for payment proof screenshots.
+//
+// Layout: payments/{studentUid}/{paymentId}.jpg
+//
+// Students may upload their own screenshots (max 5 MB, images only) and
+// read them back. Admins (document in Firestore `admins/{uid}`) can view
+// every screenshot from the Admin App. Public access is denied.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid));
+    }
+
+    match /payments/{studentUid}/{fileName} {
+      // Students read their own proofs; admins can view all.
+      allow read: if isSignedIn()
+        && (request.auth.uid == studentUid || isAdmin());
+
+      // Students upload only into their own folder.
+      allow create: if isSignedIn()
+        && request.auth.uid == studentUid
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+
+      // Proofs are immutable once uploaded (students cannot overwrite or
+      // delete evidence). Cleanup, if ever needed, happens via the Console.
+      allow update, delete: if false;
+    }
+
+    // Deny everything else.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
