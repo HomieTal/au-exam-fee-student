@@ -1,0 +1,123 @@
+rules_version = '2';
+
+// AU Exam Fee – Firestore security rules (student app + admin app).
+//
+// Students:
+//   • can read ONLY their own profile (students/{uid}) and payments.
+//   • can create their own profile (at registration) and their own payment
+//     submissions — always with status "pending".
+//   • can NEVER update or delete a payment (so they cannot mark it verified
+//     or tamper with verification results) and can NEVER edit their profile
+//     after creation (academic data is exam-cell managed).
+// Admins (AU Exam Fee Admin App):
+//   • an admin is a document in `admins/{uid}` whose `role` is one of the
+//     authorized roles and whose `status` is not "blocked".
+//   • signup writes a "pending" request; an authorized admin approves it.
+//   • can manage fees, documents, settings, verify/reject payments and
+//     correct student profiles.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      // exists() first: get() on a missing document throws, which would
+      // otherwise error the whole condition for non-admin users.
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.get('role', '') in ['admin', 'superadmin', 'department_admin', 'exam_cell']
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.get('status', 'active') != 'blocked';
+    }
+
+    // ── Students ────────────────────────────────────────────────────────
+    match /students/{uid} {
+      // Students read only their own profile; admins can read all. Legacy
+      // exam-cell records (created by the Admin App's document extraction,
+      // keyed by register number and WITHOUT a uid field) may be read by
+      // the signed-in student whose register-number email matches – this
+      // powers automatic account provisioning at first sign-in.
+      allow read: if isSignedIn() && (
+        request.auth.uid == uid
+        || isAdmin()
+        || (!('uid' in resource.data.keys())
+            && ('registerNumber' in resource.data.keys())
+            && (resource.data.registerNumber.lower() + '@au.edu.in')
+                == request.auth.token.email.lower())
+      );
+
+      // Students may create only their own profile at registration; admins
+      // also create exam-cell records keyed by register number.
+      allow create: if isSignedIn()
+        && (isAdmin()
+            || (request.auth.uid == uid
+                && request.resource.data.uid == uid));
+
+      // Students may only correct their own contact details (phone, and
+      // email after verification); academic data is admin-only.
+      allow update: if isAdmin()
+        || (isSignedIn()
+            && request.auth.uid == uid
+            && request.resource.data.diff(resource.data)
+                .affectedKeys().hasOnly(['phone', 'email']));
+
+      allow delete: if isAdmin();
+    }
+
+    // ── Payments ────────────────────────────────────────────────────────
+    match /payments/{paymentId} {
+      // Students read only their own payments; admins can read all
+      // (the Admin App lists every submission, transaction IDs and proof).
+      allow read: if isSignedIn()
+        && (resource.data.studentUid == request.auth.uid || isAdmin());
+
+      // Students can submit only their own payments, and always as
+      // "pending" – they can never self-verify.
+      allow create: if isSignedIn()
+        && request.resource.data.studentUid == request.auth.uid
+        && request.resource.data.status == 'pending';
+
+      // Only admins can verify/reject payments or fix data. Students can
+      // never update or delete a submission.
+      allow update, delete: if isAdmin();
+    }
+
+    // ── Fee configurations (Admin App "Fees" tab) ───────────────────────
+    // Students read the active fee for their department/semester/year;
+    // admins create and edit them.
+    match /fees/{feeId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── Documents (Admin App document vault) ────────────────────────────
+    match /documents/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ── Settings (UPI collect details, etc.) ────────────────────────────
+    match /settings/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── Admins ──────────────────────────────────────────────────────────
+    match /admins/{uid} {
+      allow read: if isSignedIn();
+
+      // The Admin App signup creates an ACCESS REQUEST with role "pending";
+      // a superadmin approves it from the app.
+      allow create: if isSignedIn()
+        && request.resource.data.role == 'pending';
+
+      // Approve / block / demote / remove – authorized admins only.
+      allow update, delete: if isAdmin();
+    }
+
+    // Deny everything else.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

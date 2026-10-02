@@ -1,0 +1,61 @@
+name: au_fee
+description: "AU Exam Fee – Student app for Anna University exam fee submission and verification."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # Firebase
+  firebase_core: ^2.32.0
+  firebase_auth: ^4.16.0
+  cloud_firestore: ^4.17.0
+  firebase_storage: ^11.6.0
+
+  # UI
+  cached_network_image: ^3.3.0
+  qr_flutter: ^4.1.0
+
+  # Utilities
+  intl: ^0.18.0
+  connectivity_plus: ^5.0.0
+  image_picker: ^1.1.2
+  url_launcher: ^6.2.0
+
+  flutter_launcher_icons: ^0.13.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+        - asset: assets/fonts/Poppins-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Poppins-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  windows:
+    generate: true
+  image_path: "assets/images/anna_university_logo.png"
