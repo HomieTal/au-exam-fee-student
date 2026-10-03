@@ -14,6 +14,7 @@ import '../../widgets/fee_card.dart';
 import '../../widgets/loading_widget.dart';
 import '../../widgets/payment_status_card.dart';
 import 'payment_submission_screen.dart';
+import 'registration_preview_screen.dart';
 
 /// Shows the announced exam fee details, current payment status and the
 /// Submit Payment entry point.
@@ -28,13 +29,26 @@ class ExamFeeScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Exam Fee')),
-      body: StreamBuilder<ExamFee?>(
+      body: FutureBuilder<Map<String, dynamic>?>(
+        future: firestoreService.studentFeeRowFuture(student.registerNumber),
+        builder: (context, rowSnapshot) {
+          final rowAmount =
+              (rowSnapshot.data?['amount'] as num?)?.toDouble() ?? 0;
+          return StreamBuilder<ExamFee?>(
         stream: firestoreService.examFeeStream(student),
         builder: (context, feeSnapshot) {
-          final examFee = feeSnapshot.data ??
+          ExamFee? examFee = feeSnapshot.data ??
               (student.examFee != null
                   ? ExamFee.fromStudentOverride(student.examFee!)
                   : null);
+          if (rowAmount > 0) {
+            examFee = ExamFee(
+              amount: rowAmount,
+              semester: student.semester > 0 ? student.semesterLabel : null,
+              academicYear: student.academicYear,
+              lastDate: feeSnapshot.data?.lastDate,
+            );
+          }
 
           return StreamBuilder<Payment?>(
             stream: firestoreService.latestPaymentStream(student.uid),
@@ -65,6 +79,23 @@ class ExamFeeScreen extends StatelessWidget {
                     transactionId: payment?.transactionId,
                   ),
                   const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => RegistrationPreviewScreen(
+                          student: student,
+                          fallbackAmount: examFee?.amount ?? 0,
+                        ),
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                    ),
+                    icon: const Icon(Icons.fact_check_outlined),
+                    label: const Text('View Registration Preview'),
+                  ),
+                  const SizedBox(height: 16),
                   _buildActionButton(context, examFee, payment),
                   const SizedBox(height: 24),
                   if (payment != null) _SubmittedDetails(payment: payment),
@@ -74,6 +105,8 @@ class ExamFeeScreen extends StatelessWidget {
               );
             },
           );
+        },
+      );
         },
       ),
     );

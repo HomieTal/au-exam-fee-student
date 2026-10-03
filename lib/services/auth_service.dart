@@ -89,6 +89,36 @@ class AuthService {
       }
       final data = legacy.data() ?? {};
 
+      // Registration-preview subjects come from the Admin App's
+      // student_fees import (one row per register number) when present.
+      List<Map<String, dynamic>> subjects = const [];
+      int numberOfSubjects = 0;
+      double? totalFee;
+      DocumentSnapshot<Map<String, dynamic>>? previewRow;
+      try {
+        previewRow = await _db
+            .collection('student_fees')
+            .doc(regNo.toUpperCase())
+            .get();
+      } catch (_) {
+        // Preview import not present / not readable – optional.
+      }
+      final previewData = previewRow?.data();
+      if (previewData != null) {
+        subjects = ((previewData['subjects'] as List? ?? []))
+            .map((c) => {'sem': '', 'code': c.toString(), 'title': ''})
+            .toList();
+        numberOfSubjects =
+            (previewData['numberOfSubjects'] as num?)?.toInt() ??
+                subjects.length;
+        totalFee = (previewData['amount'] as num?)?.toDouble();
+      } else {
+        subjects = Student.parseLegacySubjects(data['subjects']);
+        numberOfSubjects = AppHelpers.parseSemesterOrYear(
+            data['numberOfSubjects'] ?? subjects.length);
+        totalFee = (data['totalFee'] as num?)?.toDouble();
+      }
+
       final student = Student(
         uid: credential.user!.uid,
         name: (data['name'] as String?) ?? '',
@@ -101,6 +131,16 @@ class AuthService {
         section: (data['section'] as String?) ?? '',
         phone: (data['phone'] as String?) ?? '',
         academicYear: AppHelpers.currentAcademicYear(),
+        university: (data['university'] as String?) ?? '',
+        collegeName: (data['collegeName'] as String?) ?? '',
+        collegeCode: (data['collegeCode'] as String?) ?? '',
+        degree: (data['degree'] as String?) ?? '',
+        branch: (data['branch'] as String?) ?? '',
+        regulation: (data['regulation'] as String?) ?? '',
+        dateOfBirth: Student.parseDateValue(data['dateOfBirth']),
+        subjects: subjects,
+        numberOfSubjects: numberOfSubjects,
+        totalFee: totalFee,
         createdAt: DateTime.now(),
       );
       await _db

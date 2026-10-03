@@ -15,7 +15,7 @@ import '../../widgets/fee_card.dart';
 import '../../widgets/loading_widget.dart';
 import '../../widgets/payment_status_card.dart';
 import '../exam_fee/exam_fee_screen.dart';
-import '../exam_fee/payment_submission_screen.dart';
+import '../exam_fee/registration_preview_screen.dart';
 import '../history/payment_history_screen.dart';
 import '../profile/profile_screen.dart';
 import '../../services/auth_service.dart';
@@ -161,51 +161,70 @@ class HomeScreen extends StatelessWidget {
               _EmailVerificationCard(student: student),
               const SizedBox(height: 16),
             ],
-            StreamBuilder<ExamFee?>(
-              stream: firestoreService.examFeeStream(student),
-              builder: (context, feeSnapshot) {
-                final examFee = feeSnapshot.data ??
-                    (student.examFee != null
-                        ? ExamFee.fromStudentOverride(student.examFee!)
-                        : null);
-                return StreamBuilder<Payment?>(
-                  stream: firestoreService.latestPaymentStream(student.uid),
-                  builder: (context, paymentSnapshot) {
-                    if (paymentSnapshot.hasError) {
-                      return ErrorStateWidget(
-                          message: paymentSnapshot.error.toString());
+            FutureBuilder<Map<String, dynamic>?>(
+              future: firestoreService.studentFeeRowFuture(
+                  student.registerNumber),
+              builder: (context, rowSnapshot) {
+                // The per-student registration-preview row (admin import)
+                // carries the exact payable amount for this student.
+                final rowAmount =
+                    (rowSnapshot.data?['amount'] as num?)?.toDouble() ?? 0;
+                return StreamBuilder<ExamFee?>(
+                  stream: firestoreService.examFeeStream(student),
+                  builder: (context, feeSnapshot) {
+                    ExamFee? examFee = feeSnapshot.data ??
+                        (student.examFee != null
+                            ? ExamFee.fromStudentOverride(student.examFee!)
+                            : null);
+                    if (rowAmount > 0) {
+                      examFee = ExamFee(
+                        amount: rowAmount,
+                        semester:
+                            student.semester > 0 ? student.semesterLabel : null,
+                        academicYear: student.academicYear,
+                        lastDate: feeSnapshot.data?.lastDate,
+                      );
                     }
-                    if (paymentSnapshot.connectionState ==
-                        ConnectionState.waiting) {
-                      return const LoadingWidget();
-                    }
-                    final payment = paymentSnapshot.data;
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        FeeCard(examFee: examFee, student: student),
-                        const SizedBox(height: 12),
-                        _StatsGrid(
-                          student: student,
-                          examFee: examFee,
-                          payment: payment,
-                        ),
-                        if (payment != null) ...[
-                          const SizedBox(height: 12),
-                          PaymentStatusCard(
-                            status: payment.status,
-                            rejectionReason: payment.rejectionReason,
-                            transactionId: payment.transactionId,
-                          ),
-                        ],
-                        const SizedBox(height: 20),
-                        _PayButton(
-                          student: student,
-                          examFee: examFee,
-                          payment: payment,
-                          onNavigate: onNavigate,
-                        ),
-                      ],
+                    return StreamBuilder<Payment?>(
+                      stream: firestoreService.latestPaymentStream(student.uid),
+                      builder: (context, paymentSnapshot) {
+                        if (paymentSnapshot.hasError) {
+                          return ErrorStateWidget(
+                              message: paymentSnapshot.error.toString());
+                        }
+                        if (paymentSnapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const LoadingWidget();
+                        }
+                        final payment = paymentSnapshot.data;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            FeeCard(examFee: examFee, student: student),
+                            const SizedBox(height: 12),
+                            _StatsGrid(
+                              student: student,
+                              examFee: examFee,
+                              payment: payment,
+                            ),
+                            if (payment != null) ...[
+                              const SizedBox(height: 12),
+                              PaymentStatusCard(
+                                status: payment.status,
+                                rejectionReason: payment.rejectionReason,
+                                transactionId: payment.transactionId,
+                              ),
+                            ],
+                            const SizedBox(height: 20),
+                            _PayButton(
+                              student: student,
+                              examFee: examFee,
+                              payment: payment,
+                              onNavigate: onNavigate,
+                            ),
+                          ],
+                        );
+                      },
                     );
                   },
                 );
@@ -578,9 +597,9 @@ class _PayButtonState extends State<_PayButton> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => PaymentSubmissionScreen(
+                  builder: (_) => RegistrationPreviewScreen(
                     student: widget.student,
-                    amount: fee.amount,
+                    fallbackAmount: fee.amount,
                   ),
                 ),
               );

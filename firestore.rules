@@ -55,12 +55,22 @@ service cloud.firestore {
                 && request.resource.data.uid == uid));
 
       // Students may only correct their own contact details (phone, and
-      // email after verification); academic data is admin-only.
+      // email after verification); academic data is admin-only. ONE-TIME
+      // exception: after auto-provisioning a student may populate their
+      // registration-preview fields (copied from their own exam-cell
+      // legacy record) — locked again once 'subjects' exists.
       allow update: if isAdmin()
         || (isSignedIn()
             && request.auth.uid == uid
             && request.resource.data.diff(resource.data)
-                .affectedKeys().hasOnly(['phone', 'email']));
+                .affectedKeys().hasOnly(['phone', 'email']))
+        || (isSignedIn()
+            && request.auth.uid == uid
+            && !('subjects' in resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['university', 'collegeName', 'collegeCode',
+                          'degree', 'branch', 'regulation', 'dateOfBirth',
+                          'subjects', 'numberOfSubjects', 'totalFee']));
 
       allow delete: if isAdmin();
     }
@@ -94,6 +104,15 @@ service cloud.firestore {
     // ── Documents (Admin App document vault) ────────────────────────────
     match /documents/{docId} {
       allow read, write: if isAdmin();
+    }
+
+    // ── Registration preview forms (Admin App PDF import) ───────────────
+    // One row per student: subjects, subject count, payable amount, exam
+    // session and the source PDF URL. Signed-in students read the preview
+    // data to render the Registration Preview before paying.
+    match /student_fees/{registerNumber} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
 
     // ── Settings (UPI collect details, etc.) ────────────────────────────
