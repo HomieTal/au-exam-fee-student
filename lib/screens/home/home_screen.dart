@@ -572,59 +572,57 @@ class _PayButtonState extends State<_PayButton> {
     // that was rejected); once submitted/verified there is nothing to pay.
     final showUpi = hasFee && (p == null || p.isRejected);
 
-    return Column(
-      children: [
-        SizedBox(
-          height: 52,
-          child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-            ),
-            onPressed: () {
-              if (!hasFee) {
-                AppNotifications.show(context, AppConstants.msgFeeNotAnnounced);
-                return;
-              }
-              if (p != null && p.isVerified) {
-                widget.onNavigate(2); // History – view the verified receipt
-                return;
-              }
-              if (p != null && p.isPending) {
-                widget.onNavigate(1); // Exam Fee – shows submitted status
-                return;
-              }
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => RegistrationPreviewScreen(
-                    student: widget.student,
-                    fallbackAmount: fee.amount,
-                  ),
-                ),
-              );
-            },
-            icon: Icon(
-              p?.isVerified ?? false
-                  ? Icons.receipt_long_rounded
-                  : Icons.payment_rounded,
-            ),
-            label: Text(
-              p == null
-                  ? 'Submit Payment'
-                  : p.isVerified
-                      ? 'View Payment Receipt'
-                      : p.isPending
-                          ? 'View Submitted Payment'
-                          : 'Resubmit Payment',
-              style:
-                  const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-          ),
+    final primaryButton = SizedBox(
+      height: 52,
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
-        if (showUpi) ...[
-          const SizedBox(height: 10),
-          SizedBox(
+        onPressed: () {
+          if (!hasFee) {
+            AppNotifications.show(context, AppConstants.msgFeeNotAnnounced);
+            return;
+          }
+          if (p != null && p.isVerified) {
+            widget.onNavigate(2); // History - view the verified receipt
+            return;
+          }
+          if (p != null && p.isPending) {
+            widget.onNavigate(1); // Exam Fee - shows submitted status
+            return;
+          }
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => RegistrationPreviewScreen(
+                student: widget.student,
+                fallbackAmount: fee.amount,
+              ),
+            ),
+          );
+        },
+        icon: Icon(
+          p?.isVerified ?? false
+              ? Icons.receipt_long_rounded
+              : Icons.payment_rounded,
+        ),
+        label: Text(
+          p == null
+              ? 'Submit Payment'
+              : p.isVerified
+                  ? 'View Payment Receipt'
+                  : p.isPending
+                      ? 'View Submitted Payment'
+                      : 'Resubmit Payment',
+          style:
+              const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+
+    final upiButton = showUpi
+        ? SizedBox(
             height: 48,
             child: OutlinedButton.icon(
               onPressed: _openingUpi ? null : _launchUpi,
@@ -640,38 +638,21 @@ class _PayButtonState extends State<_PayButton> {
                 style: const TextStyle(fontSize: 14),
               ),
             ),
-          ),
+          )
+        : null;
+
+    // Pay via UPI App sits above; Submit Payment below it.
+    return Column(
+      children: [
+        if (upiButton != null) ...[
+          upiButton,
+          const SizedBox(height: 10),
         ],
+        primaryButton,
       ],
     );
   }
 }
-
-/// Shown when the Auth account exists but has no matching student profile.
-class _ProfileErrorScreen extends StatelessWidget {
-  final String message;
-
-  const _ProfileErrorScreen({required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: EmptyStateWidget(
-          icon: Icons.account_circle_outlined,
-          title: 'Profile not found',
-          message: message,
-          action: OutlinedButton.icon(
-            onPressed: () => AuthService().signOut(),
-            icon: const Icon(Icons.logout_rounded),
-            label: const Text('Sign Out'),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // In-app update card
 // ─────────────────────────────────────────────────────────────────────────────
@@ -731,8 +712,8 @@ class _UpdateCard extends StatelessWidget {
             SizedBox(
               height: 40,
               child: FilledButton.icon(
-                onPressed: () => UpdateService().showUpdateDialog(
-                    context, update),
+                onPressed: () =>
+                    UpdateService().showUpdateDialog(context, update),
                 icon: const Icon(Icons.download_rounded, size: 18),
                 label: const Text('Update Now'),
               ),
@@ -778,7 +759,8 @@ class _EmailVerificationCardState extends State<_EmailVerificationCard> {
   Future<void> _send() async {
     final email = _emailController.text.trim();
     if (Validators.email(email) != null) {
-      AppNotifications.show(context, 'Enter a valid email address.', error: true);
+      AppNotifications.show(context, 'Enter a valid email address.',
+          error: true);
       return;
     }
 
@@ -863,7 +845,8 @@ class _EmailVerificationCardState extends State<_EmailVerificationCard> {
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2.2, color: Colors.white),
+                              strokeWidth: 2.2,
+                              color: Colors.white),
                         )
                       : const Icon(Icons.send_rounded, size: 18),
                   label: const Text('Send Verification Link'),
@@ -871,6 +854,31 @@ class _EmailVerificationCardState extends State<_EmailVerificationCard> {
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown when the Auth account exists but has no matching student profile.
+class _ProfileErrorScreen extends StatelessWidget {
+  final String message;
+
+  const _ProfileErrorScreen({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: EmptyStateWidget(
+          icon: Icons.account_circle_outlined,
+          title: 'Profile not found',
+          message: message,
+          action: OutlinedButton.icon(
+            onPressed: () => AuthService().signOut(),
+            icon: const Icon(Icons.logout_rounded),
+            label: const Text('Sign Out'),
+          ),
         ),
       ),
     );
