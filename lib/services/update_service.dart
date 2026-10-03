@@ -7,20 +7,48 @@ import 'package:url_launcher/url_launcher.dart';
 import '../utils/constants.dart';
 import '../utils/theme.dart';
 
+/// A newer release found on GitHub.
+class AppUpdate {
+  final String version;
+  final String changelog;
+  final String? apkUrl;
+  final String releaseUrl;
+
+  const AppUpdate({
+    required this.version,
+    required this.changelog,
+    this.apkUrl,
+    required this.releaseUrl,
+  });
+}
+
 /// In-app update checking against GitHub releases.
 ///
 /// When a release tagged newer than [AppConstants.appVersion] exists on
-/// `AppConstants.githubRepo`, the app shows an update dialog with the
-/// release notes and a button that opens the release page (or the APK
-/// asset directly) in the browser.
+/// `AppConstants.githubRepo`:
+///   • an update card appears automatically on the dashboard when the app
+///     opens (see [updateNotifier]),
+///   • a popup also shows once per session,
+///   • the Profile screen's "Check for Update" button runs the check on
+///     demand.
 class UpdateService {
-  static bool _dismissedThisSession = false;
+  /// Latest update found this session – listened to by the dashboard card.
+  static final ValueNotifier<AppUpdate?> updateNotifier =
+      ValueNotifier<AppUpdate?>(null);
 
-  Future<AppUpdate?> checkForUpdate() async {
-    if (!AppConstants.updateCheckEnabled || _dismissedThisSession) return null;
+  static bool _checkedThisSession = false;
+  static bool _startupDialogShown = false;
+
+  /// Queries GitHub for the latest release. Results are cached in
+  /// [updateNotifier] for the whole session.
+  Future<AppUpdate?> checkForUpdate({bool force = false}) async {
+    if (!AppConstants.updateCheckEnabled) return null;
+    if (_checkedThisSession && !force) return updateNotifier.value;
+    _checkedThisSession = true;
+
+    HttpClient? client;
     try {
-      final client = HttpClient()
-        ..connectionTimeout = const Duration(seconds: 10);
+      client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
       final request = await client.getUrl(
         Uri.parse(
             'https://api.github.com/repos/${AppConstants.githubRepo}/releases/latest'),
@@ -28,7 +56,7 @@ class UpdateService {
       request.headers.set('Accept', 'application/vnd.github+json');
       request.headers.set('User-Agent', 'au-exam-fee-student');
       final response = await request.close();
-      if (response.statusCode != 200) return null;
+      if (response.statusCode != 200) return updateNotifier.value;
 
       final body = await response.transform(utf8.decoder).join();
       final data = jsonDecode(body) as Map<String, dynamic>;
@@ -37,7 +65,9 @@ class UpdateService {
             RegExp(r'^[vV]'),
             '',
           );
-      if (tag.isEmpty || !_isNewer(tag, AppConstants.appVersion)) return null;
+      if (tag.isEmpty || !_isNewer(tag, AppConstants.appVersion)) {
+        return updateNotifier.value;
+      }
 
       String? apkUrl;
       for (final asset in (data['assets'] as List? ?? [])) {
@@ -48,39 +78,55 @@ class UpdateService {
         }
       }
 
-      return AppUpdate(
+      final update = AppUpdate(
         version: tag,
         changelog: (data['body'] ?? '').toString(),
         apkUrl: (apkUrl?.isNotEmpty ?? false) ? apkUrl : null,
         releaseUrl: (data['html_url'] ?? '').toString(),
       );
+      updateNotifier.value = update;
+      return update;
     } catch (_) {
-      // Offline or repository not reachable – updates are optional.
-      return null;
+      // Offline, rate-limited or repository not reachable – updates are
+      // optional and fail silently.
+      return updateNotifier.value;
+    } finally {
+      client?.close();
     }
   }
 
-  /// Semantic-ish comparison of "MAJOR.MINOR.PATCH" strings.
-  bool _isNewer(String remote, String local) {
-    List<int> parse(String v) =>
-        v.split('.').map((p) => int.tryParse(p) ?? 0).toList();
-    final r = parse(remote);
-    final l = parse(local);
-    for (var i = 0; i < 3; i++) {
-      final rv = i < r.length ? r[i] : 0;
-      final lv = i < l.length ? l[i] : 0;
-      if (rv != lv) return rv > lv;
-    }
-    return false;
-  }
-
-  /// Checks once per app start and shows the update dialog when a newer
-  /// release exists.
-  Future<void> maybeShowUpdateDialog(BuildContext context) async {
+  /// Runs once when the app opens: refreshes [updateNotifier] and pops up
+  /// the update dialog (unless already shown this session).
+  Future<void> runStartupCheck(BuildContext context) async {
     final update = await checkForUpdate();
-    if (update == null || !context.mounted) return;
+    if (update != null && !_startupDialogShown && context.mounted) {
+      _startupDialogShown = true;
+      showUpdateDialog(context, update);
+    }
+  }
 
-    await showDialog<void>(
+  /// Manual check (Profile button): shows the update dialog when a newer
+  /// release exists, otherwise confirms the app is current.
+  Future<void> manualCheck(BuildContext context) async {
+    final update = await checkForUpdate(force: true);
+    if (!context.mounted) return;
+    if (update == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'You are using the latest version (v${AppConstants.appVersion}).'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      return;
+    }
+    _startupDialogShown = true;
+    showUpdateDialog(context, update);
+  }
+
+  /// The update dialog with release notes and an Update Now action.
+  void showUpdateDialog(BuildContext context, AppUpdate update) {
+    showDialog<void>(
       context: context,
       barrierDismissible: true,
       builder: (dialogContext) => AlertDialog(
@@ -91,7 +137,7 @@ class UpdateService {
           children: [
             Text(
               'Version ${update.version} is available '
-              '(you have ${AppConstants.appVersion}).',
+              '(you have v${AppConstants.appVersion}).',
             ),
             if (update.changelog.trim().isNotEmpty) ...[
               const SizedBox(height: 10),
@@ -110,20 +156,13 @@ class UpdateService {
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              _dismissedThisSession = true;
-              Navigator.pop(dialogContext);
-            },
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Later'),
           ),
           FilledButton.icon(
             onPressed: () {
-              _dismissedThisSession = true;
               Navigator.pop(dialogContext);
-              final url = update.apkUrl ?? update.releaseUrl;
-              if (url.isNotEmpty) {
-                launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-              }
+              _openUpdate(update);
             },
             icon: const Icon(Icons.download_rounded, size: 18),
             label: const Text('Update Now'),
@@ -132,18 +171,25 @@ class UpdateService {
       ),
     );
   }
-}
 
-class AppUpdate {
-  final String version;
-  final String changelog;
-  final String? apkUrl;
-  final String releaseUrl;
+  void _openUpdate(AppUpdate update) {
+    final url = update.apkUrl ?? update.releaseUrl;
+    if (url.isNotEmpty) {
+      launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    }
+  }
 
-  const AppUpdate({
-    required this.version,
-    required this.changelog,
-    this.apkUrl,
-    required this.releaseUrl,
-  });
+  /// Semantic-ish comparison of "MAJOR.MINOR.PATCH" strings.
+  bool _isNewer(String remote, String local) {
+    List<int> parse(String v) =>
+        v.split('.').map((p) => int.tryParse(p) ?? 0).toList();
+    final r = parse(remote);
+    final l = parse(local);
+    for (var i = 0; i < 3; i++) {
+      final rv = i < r.length ? r[i] : 0;
+      final lv = i < l.length ? l[i] : 0;
+      if (rv != lv) return rv > lv;
+    }
+    return false;
+  }
 }

@@ -47,7 +47,7 @@ class _AuthGateState extends State<AuthGate> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _updateService.maybeShowUpdateDialog(context);
+      _updateService.runStartupCheck(context);
     });
   }
 

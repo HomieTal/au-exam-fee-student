@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/student.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
+import '../../services/update_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/validators.dart';
 import '../auth/login_screen.dart';
@@ -139,6 +140,8 @@ class ProfileScreen extends StatelessWidget {
           Center(
             child: Column(
               children: [
+                _CheckUpdateButton(),
+                const SizedBox(height: 12),
                 Text(
                   'v${AppConstants.appVersion}',
                   style: theme.textTheme.bodySmall,
@@ -267,8 +270,7 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _confirmLogout(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
+  Future<void> _confirmLogout(BuildContext context) async {    final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Logout'),
@@ -296,5 +298,50 @@ class ProfileScreen extends StatelessWidget {
         );
       }
     }
+  }
+}
+
+/// "Check for Update" button – runs the GitHub release check on demand.
+class _CheckUpdateButton extends StatefulWidget {
+  @override
+  State<_CheckUpdateButton> createState() => _CheckUpdateButtonState();
+}
+
+class _CheckUpdateButtonState extends State<_CheckUpdateButton> {
+  final _updateService = UpdateService();
+  bool _checking = false;
+
+  Future<void> _check() async {
+    setState(() => _checking = true);
+    try {
+      await _updateService.manualCheck(context);
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return OutlinedButton.icon(
+      onPressed: _checking ? null : _check,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: theme.colorScheme.primary,
+        side: BorderSide(
+            color: theme.colorScheme.primary.withValues(alpha: 0.5)),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+      ),
+      icon: _checking
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2.2),
+            )
+          : const Icon(Icons.system_update_alt_rounded, size: 18),
+      label: Text(
+        _checking ? 'Checking…' : 'Check for Update',
+        style: const TextStyle(fontSize: 13),
+      ),
+    );
   }
 }

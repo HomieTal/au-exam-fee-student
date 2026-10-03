@@ -5,6 +5,7 @@ import '../../models/payment.dart';
 import '../../models/student.dart';
 import '../../services/firestore_service.dart';
 import '../../services/upi_service.dart';
+import '../../services/update_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/helpers.dart';
 import '../../utils/theme.dart';
@@ -146,6 +147,15 @@ class HomeScreen extends StatelessWidget {
               onProfileTap: () => onNavigate(3),
             ),
             const SizedBox(height: 16),
+            ValueListenableBuilder<AppUpdate?>(
+              valueListenable: UpdateService.updateNotifier,
+              builder: (context, update, _) => update == null
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: _UpdateCard(update: update),
+                    ),
+            ),
             if (student.needsEmailVerification) ...[
               _EmailVerificationCard(student: student),
               const SizedBox(height: 16),
@@ -637,6 +647,78 @@ class _ProfileErrorScreen extends StatelessWidget {
             icon: const Icon(Icons.logout_rounded),
             label: const Text('Sign Out'),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// In-app update card
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Auto-popup card shown on the dashboard when a newer GitHub release is
+/// available. Stays until the student taps Later or updates.
+class _UpdateCard extends StatelessWidget {
+  final AppUpdate update;
+
+  const _UpdateCard({required this.update});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: EdgeInsets.zero,
+      color: theme.colorScheme.primary.withValues(alpha: 0.06),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+            color: theme.colorScheme.primary.withValues(alpha: 0.4)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.system_update_alt_rounded,
+                    color: theme.colorScheme.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Update available – v${update.version}',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () =>
+                      UpdateService.updateNotifier.value = null,
+                  icon: const Icon(Icons.close_rounded, size: 20),
+                  tooltip: 'Dismiss',
+                ),
+              ],
+            ),
+            if (update.changelog.trim().isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                update.changelog.trim(),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 40,
+              child: FilledButton.icon(
+                onPressed: () => UpdateService().showUpdateDialog(
+                    context, update),
+                icon: const Icon(Icons.download_rounded, size: 18),
+                label: const Text('Update Now'),
+              ),
+            ),
+          ],
         ),
       ),
     );
