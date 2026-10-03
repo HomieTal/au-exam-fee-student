@@ -39,9 +39,9 @@ class ExamFee {
       amount: (data['amount'] as num?)?.toDouble() ?? 0,
       semester: semester == null
           ? null
-          : 'Semester ${AppHelpers.intToRoman(
+          : AppHelpers.intToRoman(
               semester is num ? semester.toInt() : 0,
-            )}',
+            ),
       academicYear: data['academicYear'] as String?,
       lastDate: data['lastDate'] is Timestamp
           ? (data['lastDate'] as Timestamp).toDate()
