@@ -4,6 +4,7 @@ import '../../services/auth_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/helpers.dart';
 import '../../utils/theme.dart';
+import '../../utils/notifications.dart';
 import '../../utils/validators.dart';
 import '../../widgets/auth_background.dart';
 import 'forgot_password_screen.dart';
@@ -51,12 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
       // AuthGate listens to authStateChanges and navigates automatically.
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString()),
-            backgroundColor: AppTheme.errorColor,
-          ),
-        );
+        AppNotifications.show(context, e.toString(), error: true);
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

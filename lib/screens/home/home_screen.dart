@@ -10,6 +10,7 @@ import '../../utils/constants.dart';
 import '../../utils/helpers.dart';
 import '../../utils/theme.dart';
 import '../../utils/validators.dart';
+import '../../utils/notifications.dart';
 import '../../widgets/fee_card.dart';
 import '../../widgets/loading_widget.dart';
 import '../../widgets/payment_status_card.dart';
@@ -514,9 +515,10 @@ class _PayButtonState extends State<_PayButton> {
       final settings = await _firestoreService.getPaymentSettings();
       if (settings == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('UPI details have not been configured yet.')),
+          AppNotifications.show(
+            context,
+            'UPI details have not been configured yet.',
+            error: true,
           );
         }
         return;
@@ -527,15 +529,16 @@ class _PayButtonState extends State<_PayButton> {
         note: 'Exam Fee ${widget.student.registerNumber}',
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error ??
-              'Complete the payment in your UPI app, then tap Pay Exam Fee '
-                  'to submit the transaction details.'),
-          backgroundColor:
-              error == null ? Colors.green : Theme.of(context).colorScheme.error,
-        ),
-      );
+      if (error != null) {
+        AppNotifications.show(context, error, error: true);
+      } else {
+        AppNotifications.show(
+          context,
+          'Complete the payment in your UPI app, then tap Submit Payment '
+          'to submit the transaction details.',
+          success: true,
+        );
+      }
     } finally {
       if (mounted) setState(() => _openingUpi = false);
     }
@@ -561,10 +564,7 @@ class _PayButtonState extends State<_PayButton> {
             ),
             onPressed: () {
               if (!hasFee) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text(AppConstants.msgFeeNotAnnounced)),
-                );
+                AppNotifications.show(context, AppConstants.msgFeeNotAnnounced);
                 return;
               }
               if (p != null && p.isVerified) {
@@ -592,7 +592,7 @@ class _PayButtonState extends State<_PayButton> {
             ),
             label: Text(
               p == null
-                  ? 'Pay Exam Fee'
+                  ? 'Submit Payment'
                   : p.isVerified
                       ? 'View Payment Receipt'
                       : p.isPending
@@ -759,33 +759,27 @@ class _EmailVerificationCardState extends State<_EmailVerificationCard> {
   Future<void> _send() async {
     final email = _emailController.text.trim();
     if (Validators.email(email) != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid email address.')),
-      );
+      AppNotifications.show(context, 'Enter a valid email address.', error: true);
       return;
     }
 
     setState(() => _sending = true);
     try {
       await _authService.sendEmailVerificationTo(email);
+      // Record the pending email so the card does not reappear.
+      await FirestoreService().updateOwnContact(
+          uid: widget.student.uid, email: email);
       if (!mounted) return;
       setState(() => _sent = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              'Verification mail sent to $email. Click the link to activate '
-              'it — you can then sign in with this email.'),
-          backgroundColor: Colors.green,
-        ),
+      AppNotifications.show(
+        context,
+        'Verification mail sent to $email. Click the link to activate '
+        'it — you can then sign in with this email.',
+        success: true,
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString()),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
+        AppNotifications.show(context, e.toString(), error: true);
       }
     } finally {
       if (mounted) setState(() => _sending = false);

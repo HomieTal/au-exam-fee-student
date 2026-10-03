@@ -7,6 +7,7 @@ import '../../services/firestore_service.dart';
 import '../../services/update_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/validators.dart';
+import '../../utils/notifications.dart';
 import '../auth/login_screen.dart';
 
 /// Student profile with self-service phone editing. Academic information
@@ -26,7 +27,7 @@ class ProfileScreen extends StatelessWidget {
         title: const Text('Profile'),
         actions: [
           IconButton(
-            onPressed: () => _editPhone(context),
+            onPressed: () => _openEditOptions(context),
             icon: const Icon(Icons.edit_rounded),
             tooltip: 'Edit phone number',
           ),
@@ -189,6 +190,164 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  /// Bottom sheet with the three self-service edit options.
+  Future<void> _openEditOptions(BuildContext context) async {
+    final option = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 12, 8, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.phone_outlined),
+                title: const Text('Phone Number'),
+                subtitle: Text(student.phone.isEmpty ? 'Not set' : student.phone),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.pop(sheetContext, 'phone'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.alternate_email_rounded),
+                title: const Text('Email ID'),
+                subtitle: Text(student.email),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.pop(sheetContext, 'email'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.lock_outline_rounded),
+                title: const Text('Change Password'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.pop(sheetContext, 'password'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (option == 'phone' && context.mounted) _editPhone(context);
+    if (option == 'email' && context.mounted) _editEmail(context);
+    if (option == 'password' && context.mounted) _changePassword(context);
+  }
+
+  /// Sends the verification mail for a new personal email and records it.
+  Future<void> _editEmail(BuildContext context) async {
+    final controller = TextEditingController(text: student.email);
+    final updated = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Edit Email ID'),
+        content: TextFormField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(
+            labelText: 'Email ID',
+            prefixIcon: Icon(Icons.alternate_email_rounded),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Send Verification'),
+          ),
+        ],
+      ),
+    );
+    if (updated != true || !context.mounted) return;
+    final email = controller.text.trim();
+    if (Validators.email(email) != null) {
+      AppNotifications.show(context, Validators.email(email)!, error: true);
+      return;
+    }
+    try {
+      await AuthService().sendEmailVerificationTo(email);
+      await FirestoreService().updateOwnContact(uid: student.uid, email: email);
+      if (context.mounted) {
+        AppNotifications.show(
+          context,
+          'Verification mail sent to . Click the link to activate it.',
+          success: true,
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        AppNotifications.show(context, e.toString(), error: true);
+      }
+    }
+  }
+
+  /// Re-authenticates and changes the account password.
+  Future<void> _changePassword(BuildContext context) async {
+    final currentController = TextEditingController();
+    final newController = TextEditingController();
+    final updated = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Change Password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: currentController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Current Password',
+                prefixIcon: Icon(Icons.lock_outline_rounded),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: newController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'New Password',
+                prefixIcon: Icon(Icons.lock_reset_rounded),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Change'),
+          ),
+        ],
+      ),
+    );
+    if (updated != true || !context.mounted) return;
+    if (newController.text.length < 6) {
+      AppNotifications.show(
+          context, 'Password must be at least 6 characters.', error: true);
+      return;
+    }
+    try {
+      await AuthService().changePassword(
+        currentPassword: currentController.text,
+        newPassword: newController.text,
+      );
+      if (context.mounted) {
+        AppNotifications.show(
+            context, 'Password changed successfully.', success: true);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        AppNotifications.show(context, e.toString(), error: true);
+      }
+    }
+  }
   /// Edit dialog for the student's own phone number (contact info only –
   /// academic fields remain exam-cell managed).
   Future<void> _editPhone(BuildContext context) async {
@@ -216,11 +375,10 @@ class ProfileScreen extends StatelessWidget {
           FilledButton(
             onPressed: () {
               if (Validators.phone(controller.text) != null) {
-                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  SnackBar(
-                    content: Text(Validators.phone(controller.text)!),
-                    backgroundColor: Theme.of(dialogContext).colorScheme.error,
-                  ),
+                AppNotifications.show(
+                  dialogContext,
+                  Validators.phone(controller.text)!,
+                  error: true,
                 );
                 return;
               }
@@ -237,21 +395,11 @@ class ProfileScreen extends StatelessWidget {
       await FirestoreService()
           .updateOwnContact(uid: student.uid, phone: controller.text);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Phone number updated.'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        AppNotifications.show(context, 'Phone number updated.', success: true);
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString()),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
+        AppNotifications.show(context, e.toString(), error: true);
       }
     }
   }

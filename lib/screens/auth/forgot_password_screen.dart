@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/validators.dart';
+import '../../utils/notifications.dart';
 import '../../widgets/auth_background.dart';
 
 /// Sends a password-reset mail to the register number's exam-cell email
@@ -41,12 +42,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       if (mounted) setState(() => _emailSent = true);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString()),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
+        AppNotifications.show(context, e.toString(), error: true);
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

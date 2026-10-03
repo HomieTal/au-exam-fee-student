@@ -9,6 +9,7 @@ import '../../services/storage_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/helpers.dart';
 import '../../utils/validators.dart';
+import '../../utils/notifications.dart';
 
 /// Payment submission form: transaction ID / UTR, payment date, payment
 /// method and a required screenshot of the payment proof.
@@ -65,12 +66,10 @@ class _PaymentSubmissionScreenState extends State<PaymentSubmissionScreen> {
 
       if (await picked.length() > AppConstants.maxScreenshotBytes) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                  'Screenshot is too large. Please choose an image under 5 MB.'),
-              backgroundColor: Colors.red,
-            ),
+          AppNotifications.show(
+            context,
+            'Screenshot is too large. Please choose an image under 5 MB.',
+            error: true,
           );
         }
         return;
@@ -80,9 +79,7 @@ class _PaymentSubmissionScreenState extends State<PaymentSubmissionScreen> {
       _screenshotFieldKey.currentState?.didChange(true);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not pick the screenshot.')),
-        );
+        AppNotifications.show(context, 'Could not pick the screenshot.', error: true);
       }
     }
   }
@@ -173,12 +170,7 @@ class _PaymentSubmissionScreenState extends State<PaymentSubmissionScreen> {
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString()),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
+        AppNotifications.show(context, e.toString(), error: true);
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);

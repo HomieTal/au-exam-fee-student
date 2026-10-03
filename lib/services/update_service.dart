@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../utils/constants.dart';
 import '../utils/theme.dart';
+import '../utils/notifications.dart';
 
 /// A newer release found on GitHub.
 class AppUpdate {
@@ -111,12 +112,10 @@ class UpdateService {
     final update = await checkForUpdate(force: true);
     if (!context.mounted) return;
     if (update == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              'You are using the latest version (v${AppConstants.appVersion}).'),
-          backgroundColor: Colors.green,
-        ),
+      AppNotifications.show(
+        context,
+        'You are using the latest version (v${AppConstants.appVersion}).',
+        success: true,
       );
       return;
     }
@@ -124,50 +123,114 @@ class UpdateService {
     showUpdateDialog(context, update);
   }
 
-  /// The update dialog with release notes and an Update Now action.
+  /// The update popup - a centered white card over a dimmed screen with an
+  /// icon badge, bold title and stacked full-width actions (design-matched).
   void showUpdateDialog(BuildContext context, AppUpdate update) {
     showDialog<void>(
       context: context,
       barrierDismissible: true,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Update Available'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Version ${update.version} is available '
-              '(you have v${AppConstants.appVersion}).',
-            ),
-            if (update.changelog.trim().isNotEmpty) ...[
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.white,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 36),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 30, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 96,
+                height: 96,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withValues(alpha: 0.08),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.system_update_alt_rounded,
+                  size: 44,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'UPDATE AVAILABLE!',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'Poppins',
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.4,
+                  color: AppTheme.textColor,
+                ),
+              ),
               const SizedBox(height: 10),
               Text(
-                update.changelog.trim(),
-                maxLines: 6,
-                overflow: TextOverflow.ellipsis,
+                'Version ${update.version} is available '
+                '(you have v${AppConstants.appVersion}).',
+                textAlign: TextAlign.center,
                 style: const TextStyle(
+                  fontFamily: 'Poppins',
+                  fontSize: 13.5,
+                  color: AppTheme.secondaryTextColor,
+                  height: 1.5,
+                ),
+              ),
+              if (update.changelog.trim().isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  update.changelog.trim(),
+                  textAlign: TextAlign.center,
+                  maxLines: 5,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
                     fontFamily: 'Poppins',
-                    fontSize: 13,
+                    fontSize: 12.5,
                     color: AppTheme.secondaryTextColor,
-                    height: 1.5),
+                    height: 1.5,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: FilledButton(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    _openUpdate(update);
+                  },
+                  style: FilledButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: const Text(
+                    'Update Now',
+                    style: TextStyle(fontSize: 15),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.secondaryTextColor,
+                    side: const BorderSide(color: AppTheme.borderColor),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: const Text(
+                    'Later',
+                    style: TextStyle(fontSize: 14),
+                  ),
+                ),
               ),
             ],
-          ],
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Later'),
-          ),
-          FilledButton.icon(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              _openUpdate(update);
-            },
-            icon: const Icon(Icons.download_rounded, size: 18),
-            label: const Text('Update Now'),
-          ),
-        ],
       ),
     );
   }

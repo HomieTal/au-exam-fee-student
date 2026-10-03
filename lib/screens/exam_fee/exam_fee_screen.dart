@@ -9,6 +9,7 @@ import '../../services/firestore_service.dart';
 import '../../services/upi_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/helpers.dart';
+import '../../utils/notifications.dart';
 import '../../widgets/fee_card.dart';
 import '../../widgets/loading_widget.dart';
 import '../../widgets/payment_status_card.dart';
@@ -126,9 +127,7 @@ class ExamFeeScreen extends StatelessWidget {
       child: ElevatedButton.icon(
         onPressed: () {
           if (!hasFee) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text(AppConstants.msgFeeNotAnnounced)),
-            );
+            AppNotifications.show(context, AppConstants.msgFeeNotAnnounced);
             return;
           }
           Navigator.push(
@@ -258,15 +257,16 @@ class _UpiDetailsCardState extends State<_UpiDetailsCard> {
         note: 'Exam Fee',
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error ??
-              'Complete the payment in your UPI app, then tap Submit Payment '
-                  'to upload the transaction details.'),
-          backgroundColor:
-              error == null ? Colors.green : Theme.of(context).colorScheme.error,
-        ),
-      );
+      if (error != null) {
+        AppNotifications.show(context, error, error: true);
+      } else {
+        AppNotifications.show(
+          context,
+          'Complete the payment in your UPI app, then tap Submit Payment '
+          'to upload the transaction details.',
+          success: true,
+        );
+      }
     } finally {
       if (mounted) setState(() => _openingUpi = false);
     }

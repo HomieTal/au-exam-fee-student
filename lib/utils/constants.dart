@@ -8,7 +8,7 @@ class AppConstants {
   // ── App info ────────────────────────────────────────────────────────────
   static const String appName = 'AU Exam Fee';
   static const String appTagline = 'Anna University – Exam Fee Portal';
-  static const String appVersion = '1.0.2';
+  static const String appVersion = '1.0.3';
   static const String developerName = 'CrackDevelopers';
   static const String developerEmail = 'crackdevelopersdot@gmail.com';
 

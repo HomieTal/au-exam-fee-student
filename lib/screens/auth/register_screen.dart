@@ -7,6 +7,7 @@ import '../../services/firestore_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/helpers.dart';
 import '../../utils/validators.dart';
+import '../../utils/notifications.dart';
 import '../../widgets/auth_background.dart';
 import 'login_screen.dart';
 
@@ -94,11 +95,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Registration successful! Please sign in.'),
-            backgroundColor: Colors.green,
-          ),
+        AppNotifications.show(
+          context,
+          'Registration successful! Please sign in.',
+          success: true,
         );
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -107,12 +107,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString()),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
+        AppNotifications.show(context, e.toString(), error: true);
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

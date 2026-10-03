@@ -223,6 +223,45 @@ class AuthService {
     }
   }
 
+  /// Changes the signed-in student's password after re-authenticating.
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) {
+      throw 'Your session has expired. Please sign in again.';
+    }
+    final email = user.email;
+    if (email == null) {
+      throw 'This account has no email address.';
+    }
+    try {
+      final credential = EmailAuthProvider.credential(
+        email: email,
+        password: currentPassword,
+      );
+      await user.reauthenticateWithCredential(credential);
+      await user.updatePassword(newPassword);
+    } on FirebaseAuthException catch (e) {
+      switch (e.code) {
+        case 'wrong-password':
+        case 'invalid-credential':
+          throw 'Your current password is incorrect.';
+        case 'weak-password':
+          throw 'Please choose a stronger password (min. 6 characters).';
+        case 'requires-recent-login':
+          throw 'Your session is too old. Please sign in again and retry.';
+        case 'network-request-failed':
+          throw AppConstants.msgNetworkError;
+        default:
+          throw AppHelpers.friendlyError(e);
+      }
+    } catch (_) {
+      throw AppConstants.msgGenericError;
+    }
+  }
+
   Future<void> signOut() async {
     try {
       await _firebaseAuth.signOut();
