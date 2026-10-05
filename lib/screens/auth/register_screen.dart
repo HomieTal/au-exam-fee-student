@@ -94,6 +94,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
         rethrow;
       }
 
+      // Publish the login index so the student can sign in with their
+      // register number and reset their password by email later.
+      try {
+        await _authService.publishLoginIndex(
+          registerNumber: student.registerNumber,
+          email: student.email,
+        );
+      } catch (_) {
+        // Optional convenience — registration itself is already complete.
+      }
+
       if (mounted) {
         AppNotifications.show(
           context,

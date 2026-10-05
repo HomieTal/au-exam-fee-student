@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../services/auth_service.dart';
-import '../../utils/constants.dart';
 import '../../utils/validators.dart';
 import '../../utils/notifications.dart';
 import '../../widgets/auth_background.dart';
 
-/// Sends a password-reset mail to the register number's exam-cell email
-/// (`<regno>@au.edu.in`).
+/// Sends a password-reset link to the personal Gmail the student added at
+/// activation (resolved from the register number via the login index).
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
 
@@ -21,7 +20,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _registerNumberController = TextEditingController();
 
   bool _isLoading = false;
-  bool _emailSent = false;
+  String? _sentToEmail;
 
   @override
   void dispose() {
@@ -29,17 +28,19 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     super.dispose();
   }
 
-  String get _targetEmail =>
-      '${_registerNumberController.text.trim().toLowerCase()}'
-      '${AppConstants.studentEmailDomain}';
-
   Future<void> _sendResetEmail() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
     try {
-      await _authService.sendPasswordReset(_targetEmail);
-      if (mounted) setState(() => _emailSent = true);
+      final email =
+          await _authService.resolveLoginEmail(_registerNumberController.text);
+      if (email == null) {
+        throw 'No activated account was found for this register number.\n'
+            'First time? Use "Activate your account" on the sign-in screen.';
+      }
+      await _authService.sendPasswordReset(email);
+      if (mounted) setState(() => _sentToEmail = email);
     } catch (e) {
       if (mounted) {
         AppNotifications.show(context, e.toString(), error: true);
@@ -59,7 +60,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
-            child: _emailSent
+            child: _sentToEmail != null
                 ? Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -69,11 +70,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         color: theme.colorScheme.primary,
                       ),
                       const SizedBox(height: 16),
-                      Text('Check your email',
+                      Text('Check your Gmail',
                           style: theme.textTheme.headlineSmall),
                       const SizedBox(height: 8),
                       Text(
-                        'We sent a password reset link to\n$_targetEmail',
+                        'We sent a password reset link to\n$_sentToEmail',
                         textAlign: TextAlign.center,
                         style: theme.textTheme.bodyMedium,
                       ),
@@ -104,7 +105,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         const SizedBox(height: 8),
                         Text(
                           'Enter your register number and we will send a reset '
-                          'link to your exam-cell email.',
+                          'link to the Gmail you added during activation.',
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodyMedium,
                         ),

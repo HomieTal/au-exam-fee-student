@@ -5,9 +5,12 @@ import '../models/student.dart';
 import '../utils/constants.dart';
 import '../utils/helpers.dart';
 
-/// Firebase Authentication wrapper – register-number/DOB sign-in with
-/// automatic account provisioning, email/password sign-in, password reset
-/// and logout. No credentials are ever written to Firestore.
+/// Firebase Authentication wrapper – register-number + password sign-in,
+/// one-time account activation (register number + DOB + personal Gmail +
+/// own password), password reset and logout. No credentials are ever
+/// written to Firestore; the public `loginIndex/{registerNumber}` document
+/// only maps a register number to its auth email so sign-in and password
+/// reset can resolve before the student is authenticated.
 class AuthService {
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -16,143 +19,190 @@ class AuthService {
 
   User? get currentUser => _firebaseAuth.currentUser;
 
-  /// Signs in with register number + date of birth.
-  ///
-  /// On the student's first sign-in the Auth account does not exist yet –
-  /// it is then created automatically (register number mapped to
-  /// [AppConstants.studentEmailDomain], password = DOB in DDMMYYYY form)
-  /// and the `students/{uid}` profile is provisioned from the legacy
-  /// exam-cell record (`students/{registerNumber}`, created by the Admin
-  /// App's document-extraction flow).
+  String _legacyEmail(String regNo) =>
+      '${regNo.toLowerCase()}${AppConstants.studentEmailDomain}';
+
+  /// Resolves the auth email for a register number from the public
+  /// `loginIndex` collection. Returns null when the register number has no
+  /// activated account yet.
+  Future<String?> resolveLoginEmail(String registerNumber) async {
+    final regNo = registerNumber.trim().toUpperCase();
+    try {
+      final doc = await _db.collection('loginIndex').doc(regNo).get();
+      final email = doc.data()?['email'] as String?;
+      return (email == null || email.isEmpty) ? null : email;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Signs in with register number + the password chosen at activation.
   Future<UserCredential> signInWithRegisterNumber({
     required String registerNumber,
-    required String dateOfBirth,
+    required String password,
   }) async {
-    final regNo = registerNumber.trim();
+    final regNo = registerNumber.trim().toUpperCase();
+    final email = await resolveLoginEmail(regNo);
+    if (email == null) {
+      throw 'No activated account was found for this register number.\n'
+          'First time? Use "Activate your account" below.';
+    }
+    try {
+      return await _firebaseAuth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
+        throw 'Sign-in failed. If you forgot your password, use "Forgot '
+            'Password?" — otherwise contact the exam cell.';
+      }
+      throw AppHelpers.friendlyError(e);
+    } catch (e) {
+      throw AppHelpers.friendlyError(e);
+    }
+  }
+
+  /// One-time account activation.
+  ///
+  /// Identity step: the register number + date of birth establish the
+  /// exam-cell identity (`regno@au.edu.in`, DOB as the temporary password) —
+  /// the security rules let that identity read the imported placeholder
+  /// record, where the DOB is verified for real. Legacy accounts from
+  /// earlier app versions (DOB as password) are signed into and migrated in
+  /// place; a resumed attempt after a partial activation is recognised by
+  /// its chosen password.
+  ///
+  /// Claim step: the student's own Gmail becomes the auth email and their
+  /// own password replaces the DOB; `loginIndex` is published so future
+  /// sign-ins resolve register number → Gmail and "Forgot Password" reaches
+  /// their real inbox.
+  Future<void> activateAccount({
+    required String registerNumber,
+    required String dateOfBirth,
+    required String gmail,
+    required String password,
+  }) async {
+    final regNo = registerNumber.trim().toUpperCase();
     final dob = AppHelpers.normalizeDob(dateOfBirth);
     if (dob == null) {
       throw 'Enter your date of birth as DDMMYYYY (e.g. 05082005).';
     }
-    final email = '${regNo.toLowerCase()}${AppConstants.studentEmailDomain}';
-
-    // 1. Existing account → straight sign-in.
-    // NOTE: with email-enumeration protection enabled, signing into a
-    // NON-EXISTENT account also throws invalid-credential (not just
-    // user-not-found) — so never report "wrong password" here; fall
-    // through to auto-provisioning and let signUp disambiguate.
-    try {
-      return await _firebaseAuth.signInWithEmailAndPassword(
-        email: email,
-        password: dob,
-      );
-    } on FirebaseAuthException catch (e) {
-      if (e.code != 'user-not-found' &&
-          e.code != 'invalid-credential' &&
-          e.code != 'wrong-password') {
-        throw AppHelpers.friendlyError(e);
-      }
-      // Fall through to auto-provisioning.
-    } catch (e) {
-      throw AppHelpers.friendlyError(e);
+    final email = gmail.trim().toLowerCase();
+    if (!email.contains('@') ||
+        email.endsWith(AppConstants.studentEmailDomain)) {
+      throw 'Enter your personal Gmail address (not a college address).';
+    }
+    if (password.length < 6) {
+      throw 'Choose a password with at least 6 characters.';
     }
 
-    // 2. Create the Auth account FIRST – the legacy record is protected by
-    //    rules and can only be read by the signed-in student whose
-    //    register-number email matches it.
+    // Already activated? Point the student to sign-in / reset instead of
+    // silently creating a second account for the same register number.
+    final existing = await resolveLoginEmail(regNo);
+    if (existing != null) {
+      throw 'This register number is already activated. Please sign in, or '
+          'use "Forgot Password?" if you cannot remember your password.';
+    }
+
+    // ---- Establish the register-number identity -------------------------
     UserCredential credential;
+    var migratedLegacy = false;
     try {
-      credential = await _firebaseAuth.createUserWithEmailAndPassword(
-        email: email,
+      credential = await _firebaseAuth.signInWithEmailAndPassword(
+        email: _legacyEmail(regNo),
         password: dob,
       );
+      migratedLegacy = true;
     } on FirebaseAuthException catch (e) {
-      if (e.code == 'email-already-in-use') {
-        // The account already exists → the DOB simply didn't match.
-        throw 'Incorrect date of birth. Your initial password is your '
-            'date of birth (DDMMYYYY). If you changed it, use Forgot '
-            'Password or contact the exam cell.';
+      final retryable = e.code == 'user-not-found' ||
+          e.code == 'invalid-credential' ||
+          e.code == 'wrong-password';
+      if (!retryable) throw AppHelpers.friendlyError(e);
+      try {
+        credential = await _firebaseAuth.createUserWithEmailAndPassword(
+          email: _legacyEmail(regNo),
+          password: dob,
+        );
+      } on FirebaseAuthException catch (e2) {
+        // A prior attempt may already have replaced the DOB password —
+        // recognise it by the chosen password instead of locking out.
+        if (e2.code == 'email-already-in-use') {
+          try {
+            credential = await _firebaseAuth.signInWithEmailAndPassword(
+              email: _legacyEmail(regNo),
+              password: password,
+            );
+            migratedLegacy = true;
+          } on FirebaseAuthException {
+            throw 'Incorrect date of birth for this register number.';
+          }
+        } else {
+          throw AppHelpers.friendlyError(e2);
+        }
+      } catch (e2) {
+        throw AppHelpers.friendlyError(e2);
       }
-      throw AppHelpers.friendlyError(e);
     } catch (e) {
       throw AppHelpers.friendlyError(e);
     }
+    final user = credential.user!;
 
-    // 3. Read the exam-cell record (allowed now that we're signed in) and
-    //    provision the students/{uid} profile from it.
+    // ---- Verify the DOB against the exam-cell record --------------------
     try {
-      final legacy = await _findLegacyRecord(regNo);
-      if (legacy == null) {
-        await _rollbackUser(credential.user!);
-        throw 'No exam-cell record was found for register number $regNo. '
-            'Please contact the exam cell, or use Register to create your '
-            'account.';
+      final data = await _examCellRecord(regNo, migratedLegacy);
+      if (data == null) {
+        throw 'No exam-cell record was found for register number $regNo.\n'
+            'Use Register instead, or contact the exam cell.';
       }
-      final data = legacy.data() ?? {};
-
-      // Registration-preview subjects come from the Admin App's
-      // student_fees import (one row per register number) when present.
-      List<Map<String, dynamic>> subjects = const [];
-      int numberOfSubjects = 0;
-      double? totalFee;
-      DocumentSnapshot<Map<String, dynamic>>? previewRow;
-      try {
-        previewRow = await _db
-            .collection('student_fees')
-            .doc(regNo.toUpperCase())
-            .get();
-      } catch (_) {
-        // Preview import not present / not readable – optional.
-      }
-      final previewData = previewRow?.data();
-      if (previewData != null) {
-        subjects = ((previewData['subjects'] as List? ?? []))
-            .map((c) => {'sem': '', 'code': c.toString(), 'title': ''})
-            .toList();
-        numberOfSubjects =
-            (previewData['numberOfSubjects'] as num?)?.toInt() ??
-                subjects.length;
-        totalFee = (previewData['amount'] as num?)?.toDouble();
-      } else {
-        subjects = Student.parseLegacySubjects(data['subjects']);
-        numberOfSubjects = AppHelpers.parseSemesterOrYear(
-            data['numberOfSubjects'] ?? subjects.length);
-        totalFee = (data['totalFee'] as num?)?.toDouble();
+      if (!_recordDobMatches(data, dob)) {
+        throw 'Incorrect date of birth for this register number.';
       }
 
-      final student = Student(
-        uid: credential.user!.uid,
-        name: (data['name'] as String?) ?? '',
-        registerNumber:
-            (data['registerNumber'] as String?) ?? regNo.toUpperCase(),
+      // ---- Provision / refresh the students/{uid} profile ---------------
+      final profile = await _studentFromRecord(
+        data: data,
+        uid: user.uid,
+        regNo: regNo,
         email: email,
-        department: (data['department'] as String?) ?? '',
-        year: AppHelpers.parseSemesterOrYear(data['year']),
-        semester: AppHelpers.parseSemesterOrYear(data['semester']),
-        section: (data['section'] as String?) ?? '',
-        phone: (data['phone'] as String?) ?? '',
-        academicYear: AppHelpers.currentAcademicYear(),
-        university: (data['university'] as String?) ?? '',
-        collegeName: (data['collegeName'] as String?) ?? '',
-        collegeCode: (data['collegeCode'] as String?) ?? '',
-        degree: (data['degree'] as String?) ?? '',
-        branch: (data['branch'] as String?) ?? '',
-        regulation: (data['regulation'] as String?) ?? '',
-        dateOfBirth: Student.parseDateValue(data['dateOfBirth']),
-        subjects: subjects,
-        numberOfSubjects: numberOfSubjects,
-        totalFee: totalFee,
-        createdAt: DateTime.now(),
       );
       await _db
           .collection(AppConstants.studentsCollection)
-          .doc(credential.user!.uid)
-          .set(student.toMap());
+          .doc(user.uid)
+          .set(profile, SetOptions(merge: true));
 
-      return credential;
+      // ---- Publish the login index (owner-guarded by the rules) ---------
+      // Published BEFORE the identity switch so sign-in keeps working even
+      // if a later step fails and has to be retried.
+      Future<void> publishIndex(String loginEmail) =>
+          _db.collection('loginIndex').doc(regNo).set({
+            'registerNumber': regNo,
+            'email': loginEmail,
+            'uid': user.uid,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+      await publishIndex(_legacyEmail(regNo));
+
+      // ---- Claim the account: own password + own Gmail -------------------
+      await user.updatePassword(password);
+      await user.updateEmail(email);
+      await publishIndex(email);
+
+      // Best-effort verification mail — the auth gate asks the student to
+      // click it before opening the dashboard.
+      try {
+        await user.sendEmailVerification();
+      } catch (_) {}
     } catch (e) {
-      // Provisioning failed – roll the fresh account back so the student
-      // gets a clean retry.
-      await _rollbackUser(credential.user!);
+      if (migratedLegacy) {
+        // The legacy account cannot be deleted from the client; leave it in
+        // a consistent state and end the session for a clean retry.
+        try {
+          await _firebaseAuth.signOut();
+        } catch (_) {}
+      } else {
+        await _rollbackUser(user);
+      }
       if (e is FirebaseAuthException || e is FirebaseException) {
         throw AppHelpers.friendlyError(e);
       }
@@ -160,7 +210,126 @@ class AuthService {
     }
   }
 
-  /// Deletes a just-created Auth account (provisioning rollback).
+  /// Reads the exam-cell record for a register number. Fresh activations
+  /// read the placeholder document (allowed by the rules for the
+  /// register-number identity); migrated legacy accounts read their own
+  /// profile document.
+  Future<Map<String, dynamic>?> _examCellRecord(
+    String regNo,
+    bool migratedLegacy,
+  ) async {
+    try {
+      if (migratedLegacy) {
+        final doc = await _db
+            .collection(AppConstants.studentsCollection)
+            .doc(_firebaseAuth.currentUser!.uid)
+            .get();
+        final data = doc.data();
+        if (data == null) return null;
+        final recorded = (data['registerNumber'] as String?)?.toUpperCase();
+        return recorded == regNo ? data : null;
+      }
+      for (final id in [regNo, regNo.toLowerCase()]) {
+        final doc = await _db
+            .collection(AppConstants.studentsCollection)
+            .doc(id)
+            .get();
+        if (doc.exists) return doc.data();
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Compares an exam-cell record's date of birth (DD-MM-YYYY string or
+  /// Firestore timestamp) with the entered DDMMYYYY value.
+  bool _recordDobMatches(Map<String, dynamic> data, String dob) {
+    final stored = data['dateOfBirthString'];
+    if (stored is String &&
+        stored.replaceAll(RegExp(r'[^0-9]'), '') == dob) {
+      return true;
+    }
+    final timestamp = data['dateOfBirth'];
+    if (timestamp is Timestamp) {
+      final utc = timestamp.toDate().toUtc();
+      final dd = utc.day.toString().padLeft(2, '0');
+      final mm = utc.month.toString().padLeft(2, '0');
+      if ('$dd$mm${utc.year}' == dob) return true;
+    }
+    return false;
+  }
+
+  /// Builds the `students/{uid}` profile map from an exam-cell record,
+  /// preferring the Registration Preview import (student_fees) for the
+  /// subjects and fee when present.
+  Future<Map<String, dynamic>> _studentFromRecord({
+    required Map<String, dynamic> data,
+    required String uid,
+    required String regNo,
+    required String email,
+  }) async {
+    var subjects = <Map<String, dynamic>>[];
+    int numberOfSubjects = 0;
+    double? totalFee;
+
+    DocumentSnapshot<Map<String, dynamic>>? previewRow;
+    try {
+      previewRow = await _db
+          .collection('student_fees')
+          .doc(regNo.toUpperCase())
+          .get();
+    } catch (_) {
+      // Preview import not present / not readable – optional.
+    }
+    final previewData = previewRow?.data();
+    if (previewData != null) {
+      subjects = ((previewData['subjects'] as List? ?? []))
+          .map((c) => {'sem': '', 'code': c.toString(), 'title': ''})
+          .toList();
+      numberOfSubjects = (previewData['numberOfSubjects'] as num?)?.toInt() ??
+          subjects.length;
+      totalFee = (previewData['amount'] as num?)?.toDouble();
+    } else {
+      subjects = Student.parseLegacySubjects(data['subjects']);
+      numberOfSubjects = AppHelpers.parseSemesterOrYear(
+        data['numberOfSubjects'] ?? subjects.length,
+      );
+      totalFee = (data['totalFee'] as num?)?.toDouble();
+    }
+
+    final student = Student(
+      uid: uid,
+      name: (data['name'] as String?) ?? '',
+      registerNumber: (data['registerNumber'] as String?) ?? regNo,
+      email: email,
+      department: (data['department'] as String?) ?? '',
+      year: AppHelpers.parseSemesterOrYear(data['year']),
+      semester: AppHelpers.parseSemesterOrYear(data['semester']),
+      section: (data['section'] as String?) ?? '',
+      phone: (data['phone'] as String?) ?? '',
+      academicYear: (data['academicYear'] as String?) ??
+          AppHelpers.currentAcademicYear(),
+      university: (data['university'] as String?) ?? '',
+      collegeName: (data['collegeName'] as String?) ?? '',
+      collegeCode: (data['collegeCode'] as String?) ?? '',
+      degree: (data['degree'] as String?) ?? '',
+      branch: (data['branch'] as String?) ?? '',
+      regulation: (data['regulation'] as String?) ?? '',
+      dateOfBirth: Student.parseDateValue(data['dateOfBirth']),
+      subjects: subjects,
+      numberOfSubjects: numberOfSubjects,
+      totalFee: totalFee,
+      createdAt: DateTime.now(),
+    );
+    return student.toMap()
+      ..['accountStatus'] = 'active'
+      ..['authProvisioned'] = true
+      ..['accountSource'] = 'activation'
+      ..['updatedAt'] = FieldValue.serverTimestamp();
+  }
+
+  /// Deletes a just-created Auth account (activation rollback).
   Future<void> _rollbackUser(User user) async {
     try {
       await user.delete();
@@ -170,52 +339,39 @@ class AuthService {
     }
   }
 
-  /// Looks up the legacy exam-cell record for a register number. Allowed
-  /// by the security rules only for the signed-in student whose
-  /// register-number email matches the record.
-  Future<DocumentSnapshot<Map<String, dynamic>>?> _findLegacyRecord(
-      String regNo) async {
-    final candidates = [
-      regNo,
-      regNo.toUpperCase(),
-      regNo.toLowerCase(),
-    ];
-    for (final id in candidates) {
-      final doc = await _db
-          .collection(AppConstants.studentsCollection)
-          .doc(id)
-          .get();
-      if (doc.exists && !(doc.data() ?? {}).containsKey('uid')) {
-        return doc;
-      }
-    }
-    final query = await _db
-        .collection(AppConstants.studentsCollection)
-        .where('registerNumber', isEqualTo: regNo.toUpperCase())
-        .limit(1)
-        .get();
-    if (query.docs.isNotEmpty && !query.docs.first.data().containsKey('uid')) {
-      return query.docs.first;
-    }
-    return null;
-  }
-
   /// Sends the Firebase verification mail for a new personal email
-  /// address. The auth email only becomes active once the student clicks
-  /// the link in the mail (verify-before-update), so the register-number
-  /// login keeps working until then.
+  /// address. For an existing register-number account this uses
+  /// verify-before-update; for an account that already has the target email,
+  /// it sends the standard Firebase verification mail.
   Future<void> sendEmailVerificationTo(String newEmail) async {
     final user = _firebaseAuth.currentUser;
     if (user == null) {
       throw 'Your session has expired. Please sign in again.';
     }
+    final email = newEmail.trim();
+    if (email.isEmpty) {
+      throw 'Enter a valid email address.';
+    }
     try {
-      await user.verifyBeforeUpdateEmail(newEmail.trim());
+      if (user.email?.trim().toLowerCase() == email.toLowerCase()) {
+        await user.sendEmailVerification();
+      } else {
+        await user.verifyBeforeUpdateEmail(email);
+      }
     } on FirebaseAuthException catch (e) {
       throw AppHelpers.friendlyError(e);
     } catch (_) {
       throw AppConstants.msgGenericError;
     }
+  }
+
+  /// Refreshes the current Firebase user so email verification changes are
+  /// reflected immediately in the auth gate.
+  Future<User?> reloadCurrentUser() async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) return null;
+    await user.reload();
+    return _firebaseAuth.currentUser;
   }
 
   /// Standard email/password sign-in.
@@ -261,6 +417,40 @@ class AuthService {
     } catch (_) {
       throw AppConstants.msgGenericError;
     }
+  }
+
+  /// Publishes the register number → auth email mapping used by sign-in
+  /// and password reset. Owner-guarded: the rules only allow the signed-in
+  /// student to publish their own index entry.
+  Future<void> publishLoginIndex({
+    required String registerNumber,
+    required String email,
+  }) async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) {
+      throw 'Your session has expired. Please sign in again.';
+    }
+    final regNo = registerNumber.trim().toUpperCase();
+    if (regNo.isEmpty) return;
+    await _db.collection('loginIndex').doc(regNo).set({
+      'registerNumber': regNo,
+      'email': email.trim().toLowerCase(),
+      'uid': user.uid,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  /// Sends a password-reset email to the personal Gmail registered for
+  /// [registerNumber] at activation (resolved via the login index).
+  Future<void> sendPasswordResetForRegisterNumber(
+    String registerNumber,
+  ) async {
+    final email = await resolveLoginEmail(registerNumber);
+    if (email == null) {
+      throw 'No activated account was found for this register number.\n'
+          'First time? Use "Activate your account" on the sign-in screen.';
+    }
+    await sendPasswordReset(email);
   }
 
   /// Changes the signed-in student's password after re-authenticating.

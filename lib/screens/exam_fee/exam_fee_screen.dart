@@ -18,40 +18,54 @@ import 'registration_preview_screen.dart';
 
 /// Shows the announced exam fee details, current payment status and the
 /// Submit Payment entry point.
-class ExamFeeScreen extends StatelessWidget {
+class ExamFeeScreen extends StatefulWidget {
   final Student student;
 
   const ExamFeeScreen({super.key, required this.student});
 
   @override
-  Widget build(BuildContext context) {
-    final firestoreService = FirestoreService();
+  State<ExamFeeScreen> createState() => _ExamFeeScreenState();
+}
 
+class _ExamFeeScreenState extends State<ExamFeeScreen> {
+  final _firestoreService = FirestoreService();
+  late final Future<Map<String, dynamic>?> _feeRowFuture;
+  late final Stream<ExamFee?> _examFeeStream;
+  late final Stream<Payment?> _paymentStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _feeRowFuture =
+        _firestoreService.studentFeeRowFuture(widget.student.registerNumber);
+    _examFeeStream = _firestoreService.examFeeStream(widget.student);
+    _paymentStream = _firestoreService.latestPaymentStream(widget.student.uid);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Exam Fee')),
       body: FutureBuilder<Map<String, dynamic>?>(
-        future: firestoreService.studentFeeRowFuture(student.registerNumber),
+        future: _feeRowFuture,
         builder: (context, rowSnapshot) {
           final rowAmount =
               (rowSnapshot.data?['amount'] as num?)?.toDouble() ?? 0;
-          return StreamBuilder<ExamFee?>(
-        stream: firestoreService.examFeeStream(student),
+                return StreamBuilder<ExamFee?>(
+        stream: _examFeeStream,
         builder: (context, feeSnapshot) {
-          ExamFee? examFee = feeSnapshot.data ??
-              (student.examFee != null
-                  ? ExamFee.fromStudentOverride(student.examFee!)
-                  : null);
-          if (rowAmount > 0) {
+          ExamFee? examFee = feeSnapshot.data;
+          if (examFee != null && rowAmount > 0) {
             examFee = ExamFee(
               amount: rowAmount,
-              semester: student.semester > 0 ? student.semesterLabel : null,
-              academicYear: student.academicYear,
+              semester: widget.student.semester > 0 ? widget.student.semesterLabel : null,
+              academicYear: widget.student.academicYear,
               lastDate: feeSnapshot.data?.lastDate,
             );
           }
 
           return StreamBuilder<Payment?>(
-            stream: firestoreService.latestPaymentStream(student.uid),
+            stream: _paymentStream,
             builder: (context, paymentSnapshot) {
               if (paymentSnapshot.hasError) {
                 return ErrorStateWidget(
@@ -69,7 +83,7 @@ class ExamFeeScreen extends StatelessWidget {
                 children: [
                   FeeCard(
                     examFee: examFee,
-                    student: student,
+                    student: widget.student,
                     detailed: true,
                   ),
                   const SizedBox(height: 16),
@@ -84,7 +98,7 @@ class ExamFeeScreen extends StatelessWidget {
                       context,
                       MaterialPageRoute(
                         builder: (_) => RegistrationPreviewScreen(
-                          student: student,
+                          student: widget.student,
                           fallbackAmount: examFee?.amount ?? 0,
                         ),
                       ),
@@ -158,26 +172,32 @@ class ExamFeeScreen extends StatelessWidget {
     return SizedBox(
       height: 48,
       child: ElevatedButton.icon(
-        onPressed: () {
-          if (!hasFee) {
-            AppNotifications.show(context, AppConstants.msgFeeNotAnnounced);
-            return;
-          }
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => PaymentSubmissionScreen(
-                student: student,
-                amount: examFee.amount,
-              ),
-            ),
-          );
-        },
+        style: ElevatedButton.styleFrom(
+          disabledBackgroundColor:
+              Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+        ),
+        onPressed: !hasFee
+            ? null
+            : () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => PaymentSubmissionScreen(
+                      student: widget.student,
+                      amount: examFee.amount,
+                    ),
+                  ),
+                );
+              },
         icon: Icon(payment?.isRejected ?? false
             ? Icons.refresh_rounded
             : Icons.payment_rounded),
         label: Text(
-          payment?.isRejected ?? false ? 'Resubmit Payment' : 'Submit Payment',
+          !hasFee
+              ? 'Fee Not Announced'
+              : payment?.isRejected ?? false
+                  ? 'Resubmit Payment'
+                  : 'Submit Payment',
         ),
       ),
     );

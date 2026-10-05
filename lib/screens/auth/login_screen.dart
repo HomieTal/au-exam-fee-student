@@ -2,20 +2,19 @@ import 'package:flutter/material.dart';
 
 import '../../services/auth_service.dart';
 import '../../utils/constants.dart';
-import '../../utils/helpers.dart';
 import '../../utils/theme.dart';
 import '../../utils/notifications.dart';
 import '../../utils/validators.dart';
 import '../../widgets/auth_background.dart';
+import 'activation_screen.dart';
 import 'forgot_password_screen.dart';
 import 'register_screen.dart';
 
-/// Register-number + date-of-birth sign-in.
+/// Register-number + password sign-in.
 ///
-/// On the first sign-in the account is provisioned automatically from the
-/// exam-cell record: register number → `<regno>@au.edu.in`, initial
-/// password = date of birth (DDMMYYYY). A personal email is collected and
-/// verified afterwards on the dashboard.
+/// Passwords are chosen by the student during one-time activation
+/// (register number + date of birth + personal Gmail). The register number
+/// resolves to the account's email via the login index before sign-in.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -28,15 +27,15 @@ class _LoginScreenState extends State<LoginScreen> {
   final _authService = AuthService();
 
   final _registerNumberController = TextEditingController();
-  final _dobController = TextEditingController();
+  final _passwordController = TextEditingController();
 
-  bool _obscureDob = true;
+  bool _obscurePassword = true;
   bool _isLoading = false;
 
   @override
   void dispose() {
     _registerNumberController.dispose();
-    _dobController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
@@ -47,9 +46,9 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       await _authService.signInWithRegisterNumber(
         registerNumber: _registerNumberController.text,
-        dateOfBirth: _dobController.text,
+        password: _passwordController.text,
       );
-      // AuthGate listens to authStateChanges and navigates automatically.
+      // AuthGate listens to userChanges and navigates automatically.
     } catch (e) {
       if (mounted) {
         AppNotifications.show(context, e.toString(), error: true);
@@ -123,29 +122,26 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 14),
                         TextFormField(
-                          controller: _dobController,
-                          obscureText: _obscureDob,
-                          keyboardType: TextInputType.datetime,
+                          controller: _passwordController,
+                          obscureText: _obscurePassword,
                           textInputAction: TextInputAction.done,
                           onFieldSubmitted: (_) =>
                               _isLoading ? null : _signIn(),
-                          validator: (v) => AppHelpers.normalizeDob(v) == null
-                              ? 'Enter your date of birth as DDMMYYYY'
+                          validator: (v) => (v == null || v.isEmpty)
+                              ? 'Enter your password'
                               : null,
                           decoration: InputDecoration(
-                            labelText: 'Date of Birth (Password)',
-                            hintText: 'DDMMYYYY',
-                            prefixIcon: const Icon(Icons.cake_outlined),
-                            helperText:
-                                'Your initial password is your date of birth',
+                            labelText: 'Password',
+                            hintText: 'Chosen at activation',
+                            prefixIcon: const Icon(Icons.lock_outline),
                             suffixIcon: IconButton(
                               icon: Icon(
-                                _obscureDob
+                                _obscurePassword
                                     ? Icons.visibility_outlined
                                     : Icons.visibility_off_outlined,
                               ),
                               onPressed: () => setState(
-                                  () => _obscureDob = !_obscureDob),
+                                  () => _obscurePassword = !_obscurePassword),
                             ),
                           ),
                         ),
@@ -192,12 +188,23 @@ class _LoginScreenState extends State<LoginScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 12),
+                  TextButton.icon(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ActivationScreen(),
+                      ),
+                    ),
+                    icon: const Icon(Icons.verified_user_outlined, size: 20),
+                    label: const Text('First time? Activate your account'),
+                  ),
+                  const SizedBox(height: 4),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        "Don't have an account?",
+                        "Not in the exam-cell records?",
                         style: theme.textTheme.bodyMedium,
                       ),
                       TextButton(

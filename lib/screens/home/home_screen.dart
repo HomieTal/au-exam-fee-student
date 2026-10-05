@@ -6,10 +6,8 @@ import '../../models/student.dart';
 import '../../services/firestore_service.dart';
 import '../../services/upi_service.dart';
 import '../../services/update_service.dart';
-import '../../utils/constants.dart';
 import '../../utils/helpers.dart';
 import '../../utils/theme.dart';
-import '../../utils/validators.dart';
 import '../../utils/notifications.dart';
 import '../../widgets/fee_card.dart';
 import '../../widgets/loading_widget.dart';
@@ -120,7 +118,7 @@ class _HomeShellBodyState extends State<_HomeShellBody> {
 
 /// Dashboard: welcome header, fee card, quick stats (semester / fee / status /
 /// transaction), status card and the prominent Pay Exam Fee button.
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   final Student student;
   final ValueChanged<int> onNavigate;
 
@@ -131,21 +129,38 @@ class HomeScreen extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final firestoreService = FirestoreService();
+  State<HomeScreen> createState() => _HomeScreenState();
+}
 
+class _HomeScreenState extends State<HomeScreen> {
+  final _firestoreService = FirestoreService();
+  late final Future<Map<String, dynamic>?> _feeRowFuture;
+  late final Stream<ExamFee?> _examFeeStream;
+  late final Stream<Payment?> _paymentStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _feeRowFuture = _firestoreService.studentFeeRowFuture(
+      widget.student.registerNumber,
+    );
+    _examFeeStream = _firestoreService.examFeeStream(widget.student);
+    _paymentStream = _firestoreService.latestPaymentStream(widget.student.uid);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () async {
-          // Streams keep data live; a short delay lets the indicator settle.
           await Future<void>.delayed(const Duration(milliseconds: 400));
         },
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
             _Header(
-              student: student,
-              onProfileTap: () => onNavigate(3),
+              student: widget.student,
+              onProfileTap: () => widget.onNavigate(3),
             ),
             const SizedBox(height: 16),
             ValueListenableBuilder<AppUpdate?>(
@@ -157,40 +172,34 @@ class HomeScreen extends StatelessWidget {
                       child: _UpdateCard(update: update),
                     ),
             ),
-            if (student.needsEmailVerification) ...[
-              _EmailVerificationCard(student: student),
-              const SizedBox(height: 16),
-            ],
             FutureBuilder<Map<String, dynamic>?>(
-              future: firestoreService.studentFeeRowFuture(
-                  student.registerNumber),
+              future: _feeRowFuture,
               builder: (context, rowSnapshot) {
                 // The per-student registration-preview row (admin import)
                 // carries the exact payable amount for this student.
                 final rowAmount =
                     (rowSnapshot.data?['amount'] as num?)?.toDouble() ?? 0;
                 return StreamBuilder<ExamFee?>(
-                  stream: firestoreService.examFeeStream(student),
+                  stream: _examFeeStream,
                   builder: (context, feeSnapshot) {
-                    ExamFee? examFee = feeSnapshot.data ??
-                        (student.examFee != null
-                            ? ExamFee.fromStudentOverride(student.examFee!)
-                            : null);
-                    if (rowAmount > 0) {
+                    ExamFee? examFee = feeSnapshot.data;
+                    if (examFee != null && rowAmount > 0) {
                       examFee = ExamFee(
                         amount: rowAmount,
-                        semester:
-                            student.semester > 0 ? student.semesterLabel : null,
-                        academicYear: student.academicYear,
+                        semester: widget.student.semester > 0
+                            ? widget.student.semesterLabel
+                            : null,
+                        academicYear: widget.student.academicYear,
                         lastDate: feeSnapshot.data?.lastDate,
                       );
                     }
                     return StreamBuilder<Payment?>(
-                      stream: firestoreService.latestPaymentStream(student.uid),
+                      stream: _paymentStream,
                       builder: (context, paymentSnapshot) {
                         if (paymentSnapshot.hasError) {
                           return ErrorStateWidget(
-                              message: paymentSnapshot.error.toString());
+                            message: paymentSnapshot.error.toString(),
+                          );
                         }
                         if (paymentSnapshot.connectionState ==
                             ConnectionState.waiting) {
@@ -200,10 +209,10 @@ class HomeScreen extends StatelessWidget {
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            FeeCard(examFee: examFee, student: student),
+                            FeeCard(examFee: examFee, student: widget.student),
                             const SizedBox(height: 12),
                             _StatsGrid(
-                              student: student,
+                              student: widget.student,
                               examFee: examFee,
                               payment: payment,
                             ),
@@ -217,10 +226,10 @@ class HomeScreen extends StatelessWidget {
                             ],
                             const SizedBox(height: 20),
                             _PayButton(
-                              student: student,
+                              student: widget.student,
                               examFee: examFee,
                               payment: payment,
-                              onNavigate: onNavigate,
+                              onNavigate: widget.onNavigate,
                             ),
                           ],
                         );
@@ -265,8 +274,10 @@ class _Header extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(30),
@@ -330,8 +341,11 @@ class _Header extends StatelessWidget {
                     style: IconButton.styleFrom(
                       backgroundColor: Colors.white.withValues(alpha: 0.16),
                     ),
-                    icon: const Icon(Icons.person_rounded,
-                        color: Colors.white, size: 22),
+                    icon: const Icon(
+                      Icons.person_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
                     tooltip: 'Profile',
                   ),
                 ],
@@ -339,8 +353,11 @@ class _Header extends StatelessWidget {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Icon(Icons.badge_outlined,
-                      size: 14, color: Colors.white.withValues(alpha: 0.85)),
+                  Icon(
+                    Icons.badge_outlined,
+                    size: 14,
+                    color: Colors.white.withValues(alpha: 0.85),
+                  ),
                   const SizedBox(width: 6),
                   Flexible(
                     child: Text(
@@ -357,9 +374,11 @@ class _Header extends StatelessWidget {
                   ),
                   if (student.department.isNotEmpty) ...[
                     const SizedBox(width: 14),
-                    Icon(Icons.school_outlined,
-                        size: 14,
-                        color: Colors.white.withValues(alpha: 0.85)),
+                    Icon(
+                      Icons.school_outlined,
+                      size: 14,
+                      color: Colors.white.withValues(alpha: 0.85),
+                    ),
                     const SizedBox(width: 6),
                     Flexible(
                       child: Text(
@@ -400,14 +419,15 @@ class _StatsGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
     final p = payment;
     final fee = examFee;
     final hasFee = fee != null && fee.amount > 0;
-    final statusLabel =
-        p == null ? 'Not Submitted' : AppHelpers.statusLabel(p.status);
-    final statusColor =
-        p == null ? const Color(0xFF757575) : AppHelpers.statusColor(p.status);
+    final statusLabel = p == null
+        ? 'Not Submitted'
+        : AppHelpers.statusLabel(p.status);
+    final statusColor = p == null
+        ? const Color(0xFF757575)
+        : AppHelpers.statusColor(p.status);
 
     return Column(
       children: [
@@ -576,47 +596,50 @@ class _PayButtonState extends State<_PayButton> {
       height: 52,
       child: ElevatedButton.icon(
         style: ElevatedButton.styleFrom(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-        onPressed: () {
-          if (!hasFee) {
-            AppNotifications.show(context, AppConstants.msgFeeNotAnnounced);
-            return;
-          }
-          if (p != null && p.isVerified) {
-            widget.onNavigate(2); // History - view the verified receipt
-            return;
-          }
-          if (p != null && p.isPending) {
-            widget.onNavigate(1); // Exam Fee - shows submitted status
-            return;
-          }
-          Navigator.push(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          disabledBackgroundColor: Theme.of(
             context,
-            MaterialPageRoute(
-              builder: (_) => RegistrationPreviewScreen(
-                student: widget.student,
-                fallbackAmount: fee.amount,
-              ),
-            ),
-          );
-        },
+          ).colorScheme.primary.withValues(alpha: 0.5),
+        ),
+        onPressed: !hasFee
+            ? null
+            : () {
+                if (p != null && p.isVerified) {
+                  widget.onNavigate(2); // History - view the verified receipt
+                  return;
+                }
+                if (p != null && p.isPending) {
+                  widget.onNavigate(1); // Exam Fee - shows submitted status
+                  return;
+                }
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => RegistrationPreviewScreen(
+                      student: widget.student,
+                      fallbackAmount: fee.amount,
+                    ),
+                  ),
+                );
+              },
         icon: Icon(
           p?.isVerified ?? false
               ? Icons.receipt_long_rounded
               : Icons.payment_rounded,
         ),
         label: Text(
-          p == null
+          !hasFee
+              ? 'Fee Not Announced'
+              : p == null
               ? 'Submit Payment'
               : p.isVerified
-                  ? 'View Payment Receipt'
-                  : p.isPending
-                      ? 'View Submitted Payment'
-                      : 'Resubmit Payment',
-          style:
-              const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ? 'View Payment Receipt'
+              : p.isPending
+              ? 'View Submitted Payment'
+              : 'Resubmit Payment',
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
     );
@@ -644,10 +667,7 @@ class _PayButtonState extends State<_PayButton> {
     // Pay via UPI App sits above; Submit Payment below it.
     return Column(
       children: [
-        if (upiButton != null) ...[
-          upiButton,
-          const SizedBox(height: 10),
-        ],
+        if (upiButton != null) ...[upiButton, const SizedBox(height: 10)],
         primaryButton,
       ],
     );
@@ -673,7 +693,8 @@ class _UpdateCard extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-            color: theme.colorScheme.primary.withValues(alpha: 0.4)),
+          color: theme.colorScheme.primary.withValues(alpha: 0.4),
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -682,8 +703,10 @@ class _UpdateCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.system_update_alt_rounded,
-                    color: theme.colorScheme.primary),
+                Icon(
+                  Icons.system_update_alt_rounded,
+                  color: theme.colorScheme.primary,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -692,8 +715,7 @@ class _UpdateCard extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  onPressed: () =>
-                      UpdateService.updateNotifier.value = null,
+                  onPressed: () => UpdateService.updateNotifier.value = null,
                   icon: const Icon(Icons.close_rounded, size: 20),
                   tooltip: 'Dismiss',
                 ),
@@ -718,141 +740,6 @@ class _UpdateCard extends StatelessWidget {
                 label: const Text('Update Now'),
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// First-login email verification
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Card popup shown after the first (auto-provisioned) login: the student
-/// adds their personal email and receives the Firebase verification mail.
-/// The register-number login keeps working until the link is clicked.
-class _EmailVerificationCard extends StatefulWidget {
-  final Student student;
-
-  const _EmailVerificationCard({required this.student});
-
-  @override
-  State<_EmailVerificationCard> createState() =>
-      _EmailVerificationCardState();
-}
-
-class _EmailVerificationCardState extends State<_EmailVerificationCard> {
-  final _authService = AuthService();
-  final _emailController = TextEditingController();
-
-  bool _sending = false;
-  bool _dismissed = false;
-  bool _sent = false;
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _send() async {
-    final email = _emailController.text.trim();
-    if (Validators.email(email) != null) {
-      AppNotifications.show(context, 'Enter a valid email address.',
-          error: true);
-      return;
-    }
-
-    setState(() => _sending = true);
-    try {
-      await _authService.sendEmailVerificationTo(email);
-      // Record the pending email so the card does not reappear.
-      await FirestoreService().updateOwnContact(
-          uid: widget.student.uid, email: email);
-      if (!mounted) return;
-      setState(() => _sent = true);
-      AppNotifications.show(
-        context,
-        'Verification mail sent to $email. Click the link to activate '
-        'it — you can then sign in with this email.',
-        success: true,
-      );
-    } catch (e) {
-      if (mounted) {
-        AppNotifications.show(context, e.toString(), error: true);
-      }
-    } finally {
-      if (mounted) setState(() => _sending = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_dismissed) return const SizedBox.shrink();
-    final theme = Theme.of(context);
-
-    return Card(
-      margin: EdgeInsets.zero,
-      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.35),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.mark_email_unread_rounded,
-                    color: theme.colorScheme.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text('Verify your email',
-                      style: theme.textTheme.titleMedium),
-                ),
-                IconButton(
-                  onPressed: () => setState(() => _dismissed = true),
-                  icon: const Icon(Icons.close_rounded, size: 20),
-                  tooltip: 'Later',
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              _sent
-                  ? 'Verification mail sent! Click the link in your inbox to '
-                      'activate this email for sign-in.'
-                  : 'Add your personal email ID — we will send a one-time '
-                      'verification link. This keeps your account secure.',
-              style: theme.textTheme.bodyMedium,
-            ),
-            if (!_sent) ...[
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  hintText: 'you@example.com',
-                  prefixIcon: Icon(Icons.alternate_email_rounded),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 44,
-                child: FilledButton.icon(
-                  onPressed: _sending ? null : _send,
-                  icon: _sending
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2.2,
-                              color: Colors.white),
-                        )
-                      : const Icon(Icons.send_rounded, size: 18),
-                  label: const Text('Send Verification Link'),
-                ),
-              ),
-            ],
           ],
         ),
       ),

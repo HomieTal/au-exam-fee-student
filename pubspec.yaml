@@ -2,7 +2,7 @@ name: au_fee
 description: "AU Exam Fee – Student app for Anna University exam fee submission and verification."
 publish_to: 'none'
 
-version: 1.0.6+7
+version: 1.1.0+8
 
 environment:
   sdk: ^3.11.0

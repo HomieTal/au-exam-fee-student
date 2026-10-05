@@ -204,11 +204,15 @@ class FirestoreService {
         .where('department', isEqualTo: student.department)
         .where('semester', isEqualTo: student.semester)
         .where('academicYear', isEqualTo: student.academicYear)
-        .where('isActive', isEqualTo: true)
-        .limit(1)
         .snapshots()
-        .map((snap) =>
-            snap.docs.isEmpty ? null : ExamFee.fromFeeData(snap.docs.first.data()))
+        .map((snap) {
+          final active = snap.docs
+              .where((doc) => doc.data()['isActive'] == true)
+              .toList();
+          return active.isEmpty
+              ? null
+              : ExamFee.fromFeeData(active.first.data());
+        })
         .handleError((e) => throw AppHelpers.friendlyError(e));
   }
 
