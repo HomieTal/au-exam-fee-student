@@ -135,7 +135,9 @@ class AuthService {
             );
             migratedLegacy = true;
           } on FirebaseAuthException {
-            throw 'Incorrect date of birth for this register number.';
+            throw 'This Gmail already has an account from a previous '
+                'activation. Sign in with it, or ask the exam cell to reset '
+                'your account.';
           }
         } else {
           throw AppHelpers.friendlyError(e2);
