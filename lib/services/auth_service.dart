@@ -267,15 +267,23 @@ class AuthService {
     }
   }
 
-  /// Reads the exam-cell record for a register number. Fresh activations
-  /// read the placeholder document (allowed by the rules for the
-  /// register-number identity); migrated legacy accounts read their own
-  /// profile document.
+  /// Reads the exam-cell record for a register number. The placeholder
+  /// document (students/{registerNumber}, written by the import) is the
+  /// identity authority and is readable by the register-number identity.
+  /// Legacy accounts provisioned under the old flow have their profile
+  /// keyed by uid instead — used as a fallback for migrations.
   Future<Map<String, dynamic>?> _examCellRecord(
     String regNo,
     bool migratedLegacy,
   ) async {
     try {
+      for (final id in [regNo, regNo.toLowerCase()]) {
+        final doc = await _db
+            .collection(AppConstants.studentsCollection)
+            .doc(id)
+            .get();
+        if (doc.exists) return doc.data();
+      }
       if (migratedLegacy) {
         final doc = await _db
             .collection(AppConstants.studentsCollection)
@@ -285,13 +293,6 @@ class AuthService {
         if (data == null) return null;
         final recorded = (data['registerNumber'] as String?)?.toUpperCase();
         return recorded == regNo ? data : null;
-      }
-      for (final id in [regNo, regNo.toLowerCase()]) {
-        final doc = await _db
-            .collection(AppConstants.studentsCollection)
-            .doc(id)
-            .get();
-        if (doc.exists) return doc.data();
       }
       return null;
     } catch (_) {
