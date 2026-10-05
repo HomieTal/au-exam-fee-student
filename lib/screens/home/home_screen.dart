@@ -17,6 +17,7 @@ import '../exam_fee/registration_preview_screen.dart';
 import '../history/payment_history_screen.dart';
 import '../profile/profile_screen.dart';
 import '../../services/auth_service.dart';
+import '../../utils/constants.dart';
 
 /// Bottom-navigation shell: Home · Exam Fee · History · Profile.
 ///
@@ -142,6 +143,29 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _examFeeStream = _firestoreService.examFeeStream(widget.student);
     _paymentStream = _firestoreService.latestPaymentStream(widget.student.uid);
+    _healLoginIndex();
+  }
+
+  /// After the student clicks the verification link from activation,
+  /// Firebase switches the account email to their personal Gmail — refresh
+  /// the login index so sign-in and password resets resolve to the working
+  /// address. No-op while the account still uses the exam-cell identity.
+  Future<void> _healLoginIndex() async {
+    try {
+      final user = AuthService().currentUser;
+      final email = user?.email?.toLowerCase() ?? '';
+      if (user == null ||
+          email.isEmpty ||
+          email.endsWith(AppConstants.studentEmailDomain)) {
+        return;
+      }
+      await AuthService().publishLoginIndex(
+        registerNumber: widget.student.registerNumber,
+        email: email,
+      );
+    } catch (_) {
+      // Best effort — retried on the next app start.
+    }
   }
 
   @override

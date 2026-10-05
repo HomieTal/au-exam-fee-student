@@ -1,11 +1,7 @@
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
-import '../firebase_options.dart';
 import '../models/student.dart';
 import '../utils/constants.dart';
 import '../utils/helpers.dart';
@@ -212,10 +208,13 @@ class AuthService {
       await publishIndex(_legacyEmail(regNo));
 
       // ---- Claim the account: own password + own Gmail -------------------
+      // Firebase blocks silent email changes ("Please verify the new email
+      // before changing email"), so the Gmail switch happens through the
+      // verification link: loginIndex keeps resolving the register number
+      // to the working legacy identity, and self-heals to the Gmail once
+      // the student clicks the link (see HomeScreen).
       await activeUser.updatePassword(password);
-      await _switchAuthEmail(activeUser, email);
-      await activeUser.reload();
-      await publishIndex(email);
+      await activeUser.verifyBeforeUpdateEmail(email);
     } catch (e) {
       debugPrint('activateAccount failed: $e');
       if (migratedLegacy) {
@@ -231,39 +230,6 @@ class AuthService {
         throw AppHelpers.friendlyError(e);
       }
       rethrow;
-    }
-  }
-
-  /// Switches the account's auth email to [newEmail] via the Identity
-  /// Toolkit REST API — the immediate equivalent of the removed
-  /// User.updateEmail (no verification link, no plugin cast quirks).
-  Future<void> _switchAuthEmail(User user, String newEmail) async {
-    final idToken = await user.getIdToken(true);
-    final apiKey = DefaultFirebaseOptions.currentPlatform.apiKey;
-    final client = HttpClient();
-    try {
-      final request = await client.postUrl(Uri.parse(
-          'https://identitytoolkit.googleapis.com/v1/accounts:update'
-          '?key=$apiKey'));
-      request.headers.contentType = ContentType.json;
-      request.write(jsonEncode({
-        'idToken': idToken,
-        'email': newEmail,
-        'returnSecureToken': false,
-      }));
-      final response = await request.close();
-      final body = await response.transform(utf8.decoder).join();
-      if (response.statusCode != 200) {
-        final code = ((jsonDecode(body) as Map<String, dynamic>)['error']
-                as Map<String, dynamic>?)?['message'] ??
-            'UNKNOWN';
-        if (code.contains('EMAIL_EXISTS')) {
-          throw 'This Gmail is already registered to another account.';
-        }
-        throw 'Could not attach your Gmail ($code). Please try again.';
-      }
-    } finally {
-      client.close();
     }
   }
 

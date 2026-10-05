@@ -81,7 +81,16 @@ class _ActivationScreenState extends State<ActivationScreen> {
         gmail: _gmailController.text,
         password: _passwordController.text,
       );
-      // Signed in — the AuthGate takes over and asks for email verification.
+      if (!mounted) return;
+      // Signed in and activated — the AuthGate behind now shows the
+      // dashboard, so close the activation flow.
+      AppNotifications.show(
+        context,
+        'Account activated! A verification link was sent to your Gmail — '
+        'click it to enable password resets.',
+        success: true,
+      );
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
       if (mounted) AppNotifications.show(context, e.toString(), error: true);
     } finally {
