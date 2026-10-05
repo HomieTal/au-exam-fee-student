@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/student.dart';
 import '../utils/constants.dart';
@@ -142,11 +143,10 @@ class AuthService {
         } else {
           throw AppHelpers.friendlyError(e2);
         }
-      } catch (e2) {
-        throw AppHelpers.friendlyError(e2);
       }
     } catch (e) {
-      throw AppHelpers.friendlyError(e);
+      if (e is FirebaseAuthException) throw AppHelpers.friendlyError(e);
+      rethrow;
     }
     final user = credential.user!;
 
@@ -196,6 +196,7 @@ class AuthService {
         await user.sendEmailVerification();
       } catch (_) {}
     } catch (e) {
+      debugPrint('activateAccount failed: $e');
       if (migratedLegacy) {
         // The legacy account cannot be deleted from the client; leave it in
         // a consistent state and end the session for a clean retry.

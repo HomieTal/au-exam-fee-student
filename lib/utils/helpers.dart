@@ -200,7 +200,7 @@ class AppHelpers {
       case 'token-expired':
         return 'Your session has expired. Please sign in again.';
       default:
-        return 'Authentication failed. Please try again.';
+        return 'Authentication failed ($code). Please try again.';
     }
   }
 }

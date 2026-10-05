@@ -3,7 +3,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
-import 'screens/auth/email_verification_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'services/update_service.dart';
@@ -31,8 +30,10 @@ class AuExamFeeApp extends StatelessWidget {
   }
 }
 
-/// Routes between login, mandatory email verification, and the authenticated
-/// shell based on the live Firebase Auth state.
+/// Routes between the login screen and the authenticated shell based on the
+/// live Firebase Auth state, so sign-in/sign-out is reflected everywhere.
+/// Email verification is requested during activation; the verification
+/// link arrives directly in the student's Gmail.
 /// Also checks GitHub for a newer app release once per start.
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
@@ -64,13 +65,6 @@ class _AuthGateState extends State<AuthGate> {
         }
         final user = snapshot.data;
         if (user == null) return const LoginScreen();
-        final email = user.email?.toLowerCase() ?? '';
-        final needsVerification =
-            !user.emailVerified ||
-            email.endsWith(AppConstants.studentEmailDomain);
-        if (needsVerification) {
-          return EmailVerificationScreen(user: user);
-        }
         return HomeShell(uid: user.uid);
       },
     );
