@@ -12,12 +12,11 @@ import 'payment_submission_screen.dart';
 /// payment submission.
 ///
 /// Data sources, merged in order of authority:
-///   1. `student_fees/{registerNumber}` – the Admin App's preview-PDF import
-///      (subjects, subject count, payable amount, exam session).
+///   1. `students/{uid}` – the student's own profile: subjects, subject
+///      count, payable amount and exam session were copied from the
+///      exam-cell import at activation.
 ///   2. `students/{registerNumber}` – the exam-cell legacy record (college,
-///      DOB, degree/branch, regulation).
-///   3. `students/{uid}` – the student's own profile (copied at
-///      provisioning; also self-heals once from the legacy record).
+///      DOB, degree/branch, regulation), when still readable.
 class RegistrationPreviewScreen extends StatefulWidget {
   final Student student;
   final double fallbackAmount;
@@ -37,7 +36,6 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
   final _firestoreService = FirestoreService();
 
   bool _loading = true;
-  Map<String, dynamic>? _previewRow;
   Map<String, dynamic>? _legacy;
 
   @override
@@ -47,18 +45,8 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
   }
 
   Future<void> _load() async {
-    Map<String, dynamic>? preview;
     Map<String, dynamic>? legacy;
 
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('student_fees')
-          .doc(widget.student.registerNumber)
-          .get();
-      if (doc.exists) preview = doc.data();
-    } catch (_) {
-      // Optional data source.
-    }
     try {
       final doc = await FirebaseFirestore.instance
           .collection('students')
@@ -73,7 +61,6 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
 
     if (mounted) {
       setState(() {
-        _previewRow = preview;
         _legacy = legacy;
         _loading = false;
       });
@@ -128,14 +115,13 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
       );
     }
 
-    final previewAmount = (_previewRow?['amount'] as num?)?.toDouble() ?? 0;
-    final amount = previewAmount > 0
-        ? previewAmount
-        : (widget.student.totalFee ??
-            (widget.fallbackAmount > 0 ? widget.fallbackAmount : 0));
+    final amount = (widget.student.totalFee ?? 0) > 0
+        ? widget.student.totalFee!
+        : (widget.fallbackAmount > 0 ? widget.fallbackAmount : 0.0);
 
-    final examSession = _str(_previewRow, 'examSession',
-        'Nov. / Dec. Examination, 2026 Examination');
+    final examSession = widget.student.examFeeSession.isNotEmpty
+        ? widget.student.examFeeSession
+        : 'Nov. / Dec. Examination, 2026 Examination';
     final college =
         '${_str(_legacy, 'collegeName', widget.student.collegeName)}'
         '${_str(_legacy, 'collegeCode', widget.student.collegeCode).isNotEmpty ? " :: ${_str(_legacy, 'collegeCode', widget.student.collegeCode)}" : ''}';
@@ -153,31 +139,14 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
     final regulation = _str(_legacy, 'regulation', widget.student.regulation);
 
     final subjects = <Map<String, dynamic>>[];
-    if (widget.student.subjects.isNotEmpty) {
-      for (final s in widget.student.subjects) {
-        subjects.add({
-          'sem': _str(s, 'sem').isEmpty
-              ? (widget.student.semester > 0
-                  ? widget.student.semesterLabel
-                  : '')
-              : _str(s, 'sem'),
-          'code': _str(s, 'code'),
-          'title': _str(s, 'title'),
-        });
-      }
-    } else {
-      final codes = (_previewRow?['subjects'] as List? ?? [])
-          .map((c) => c.toString())
-          .toList();
-      for (final code in codes) {
-        subjects.add({
-          'sem': widget.student.semester > 0
-              ? widget.student.semesterLabel
-              : '',
-          'code': code,
-          'title': _subjectTitle(code),
-        });
-      }
+    for (final s in widget.student.subjects) {
+      subjects.add({
+        'sem': _str(s, 'sem').isEmpty
+            ? (widget.student.semester > 0 ? widget.student.semesterLabel : '')
+            : _str(s, 'sem'),
+        'code': _str(s, 'code'),
+        'title': _str(s, 'title'),
+      });
     }
 
     return Scaffold(

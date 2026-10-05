@@ -44,6 +44,10 @@ class Student {
   /// `fees` configuration matches, the dashboard falls back to this.
   final double? examFee;
 
+  /// Exam session label from the Registration Preview import (e.g.
+  /// "Nov. / Dec. Examination, 2026"), shown on the payment form.
+  final String examFeeSession;
+
   final DateTime createdAt;
 
   Student({
@@ -68,6 +72,7 @@ class Student {
     this.numberOfSubjects = 0,
     this.totalFee,
     this.examFee,
+    this.examFeeSession = '',
     required this.createdAt,
   });
 
@@ -99,6 +104,7 @@ class Student {
       examFee: data['examFee'] == null
           ? null
           : (data['examFee'] as num).toDouble(),
+      examFeeSession: data['examFeeSession'] as String? ?? '',
       createdAt: data['createdAt'] is Timestamp
           ? (data['createdAt'] as Timestamp).toDate()
           : DateTime.now(),
@@ -162,6 +168,7 @@ class Student {
       if (numberOfSubjects > 0) 'numberOfSubjects': numberOfSubjects,
       if (totalFee != null) 'totalFee': totalFee,
       if (examFee != null) 'examFee': examFee,
+      if (examFeeSession.isNotEmpty) 'examFeeSession': examFeeSession,
       'createdAt': createdAt,
     };
   }

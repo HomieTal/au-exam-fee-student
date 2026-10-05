@@ -258,44 +258,15 @@ class AuthService {
     return false;
   }
 
-  /// Builds the `students/{uid}` profile map from an exam-cell record,
-  /// preferring the Registration Preview import (student_fees) for the
-  /// subjects and fee when present.
+  /// Builds the `students/{uid}` profile map from the exam-cell record
+  /// (students/{registerNumber} placeholder written by the Registration
+  /// Preview import — it carries subjects, counts and the total fee).
   Future<Map<String, dynamic>> _studentFromRecord({
     required Map<String, dynamic> data,
     required String uid,
     required String regNo,
     required String email,
   }) async {
-    var subjects = <Map<String, dynamic>>[];
-    int numberOfSubjects = 0;
-    double? totalFee;
-
-    DocumentSnapshot<Map<String, dynamic>>? previewRow;
-    try {
-      previewRow = await _db
-          .collection('student_fees')
-          .doc(regNo.toUpperCase())
-          .get();
-    } catch (_) {
-      // Preview import not present / not readable – optional.
-    }
-    final previewData = previewRow?.data();
-    if (previewData != null) {
-      subjects = ((previewData['subjects'] as List? ?? []))
-          .map((c) => {'sem': '', 'code': c.toString(), 'title': ''})
-          .toList();
-      numberOfSubjects = (previewData['numberOfSubjects'] as num?)?.toInt() ??
-          subjects.length;
-      totalFee = (previewData['amount'] as num?)?.toDouble();
-    } else {
-      subjects = Student.parseLegacySubjects(data['subjects']);
-      numberOfSubjects = AppHelpers.parseSemesterOrYear(
-        data['numberOfSubjects'] ?? subjects.length,
-      );
-      totalFee = (data['totalFee'] as num?)?.toDouble();
-    }
-
     final student = Student(
       uid: uid,
       name: (data['name'] as String?) ?? '',
@@ -315,9 +286,12 @@ class AuthService {
       branch: (data['branch'] as String?) ?? '',
       regulation: (data['regulation'] as String?) ?? '',
       dateOfBirth: Student.parseDateValue(data['dateOfBirth']),
-      subjects: subjects,
-      numberOfSubjects: numberOfSubjects,
-      totalFee: totalFee,
+      subjects: Student.parseLegacySubjects(data['subjects']),
+      numberOfSubjects: AppHelpers.parseSemesterOrYear(
+        data['numberOfSubjects'] ?? 0,
+      ),
+      totalFee: (data['totalFee'] as num?)?.toDouble(),
+      examFeeSession: (data['examFeeSession'] as String?) ?? '',
       createdAt: DateTime.now(),
     );
     return student.toMap()

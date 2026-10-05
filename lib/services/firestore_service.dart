@@ -177,22 +177,6 @@ class FirestoreService {
     }
   }
 
-  /// Per-student registration-preview row from the Admin App PDF import
-  /// (subjects, subject count, payable amount, exam session). Cached for
-  /// the session.
-  final Map<String, Future<Map<String, dynamic>?>> _feeRowFutures = {};
-  Future<Map<String, dynamic>?> studentFeeRowFuture(String registerNumber) {
-    final key = registerNumber.trim().toUpperCase();
-    return _feeRowFutures.putIfAbsent(key, () async {
-      try {
-        final doc = await _db.collection('student_fees').doc(key).get();
-        return doc.exists ? doc.data() : null;
-      } catch (_) {
-        return null;
-      }
-    });
-  }
-
   // ── Settings (admin managed, student read-only) ─────────────────────────
 
   /// Live stream of the active exam fee for this student's department,

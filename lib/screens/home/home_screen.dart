@@ -134,16 +134,12 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _firestoreService = FirestoreService();
-  late final Future<Map<String, dynamic>?> _feeRowFuture;
   late final Stream<ExamFee?> _examFeeStream;
   late final Stream<Payment?> _paymentStream;
 
   @override
   void initState() {
     super.initState();
-    _feeRowFuture = _firestoreService.studentFeeRowFuture(
-      widget.student.registerNumber,
-    );
     _examFeeStream = _firestoreService.examFeeStream(widget.student);
     _paymentStream = _firestoreService.latestPaymentStream(widget.student.uid);
   }
@@ -172,13 +168,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: _UpdateCard(update: update),
                     ),
             ),
-            FutureBuilder<Map<String, dynamic>?>(
-              future: _feeRowFuture,
-              builder: (context, rowSnapshot) {
-                // The per-student registration-preview row (admin import)
-                // carries the exact payable amount for this student.
-                final rowAmount =
-                    (rowSnapshot.data?['amount'] as num?)?.toDouble() ?? 0;
+            Builder(
+              builder: (context) {
+                // The student's own profile carries the exact payable
+                // amount from the exam-cell import.
+                final rowAmount = widget.student.totalFee ?? 0;
                 return StreamBuilder<ExamFee?>(
                   stream: _examFeeStream,
                   builder: (context, feeSnapshot) {
