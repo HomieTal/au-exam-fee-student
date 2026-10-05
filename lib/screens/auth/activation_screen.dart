@@ -142,7 +142,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
                                   'links are sent there. It stays private to '
                                   'your account.',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.outline,
+                            color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
                         const SizedBox(height: 18),
