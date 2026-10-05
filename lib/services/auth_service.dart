@@ -1,7 +1,11 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import '../firebase_options.dart';
 import '../models/student.dart';
 import '../utils/constants.dart';
 import '../utils/helpers.dart';
@@ -108,50 +112,71 @@ class AuthService {
     }
 
     // ---- Establish the register-number identity -------------------------
-    UserCredential credential;
+    // firebase_auth 4.x has a response-decoding bug ("type 'List<Object?>'
+    // is not a subtype of type 'PigeonUserDetails?'") that fires AFTER the
+    // backend call has succeeded — authUser falls back to the signed-in
+    // user in that case.
+    Future<User?> authUser(Future<UserCredential> Function() call) async {
+      try {
+        return (await call()).user;
+      } catch (e) {
+        if (e.toString().contains('PigeonUserDetails')) {
+          final current = _firebaseAuth.currentUser;
+          if (current != null &&
+              current.email?.toLowerCase() == _legacyEmail(regNo)) {
+            debugPrint('auth call hit the Pigeon cast bug; used currentUser');
+            return current;
+          }
+        }
+        rethrow;
+      }
+    }
+
+    User? user;
     var migratedLegacy = false;
     try {
-      credential = await _firebaseAuth.signInWithEmailAndPassword(
-        email: _legacyEmail(regNo),
-        password: dob,
-      );
-      migratedLegacy = true;
+      user = await authUser(() => _firebaseAuth.signInWithEmailAndPassword(
+            email: _legacyEmail(regNo),
+            password: dob,
+          ));
+      migratedLegacy = user != null;
     } on FirebaseAuthException catch (e) {
       final retryable = e.code == 'user-not-found' ||
           e.code == 'invalid-credential' ||
           e.code == 'wrong-password';
       if (!retryable) throw AppHelpers.friendlyError(e);
+    }
+    if (user == null) {
       try {
-        credential = await _firebaseAuth.createUserWithEmailAndPassword(
-          email: _legacyEmail(regNo),
-          password: dob,
-        );
+        user = await authUser(() =>
+            _firebaseAuth.createUserWithEmailAndPassword(
+              email: _legacyEmail(regNo),
+              password: dob,
+            ));
       } on FirebaseAuthException catch (e2) {
         // A prior attempt may already have replaced the DOB password —
         // recognise it by the chosen password instead of locking out.
         if (e2.code == 'email-already-in-use') {
-          try {
-            credential = await _firebaseAuth.signInWithEmailAndPassword(
-              email: _legacyEmail(regNo),
-              password: password,
-            );
-            migratedLegacy = true;
-          } on FirebaseAuthException {
-            throw 'This Gmail already has an account from a previous '
-                'activation. Sign in with it, or ask the exam cell to reset '
-                'your account.';
+          user = await authUser(() =>
+              _firebaseAuth.signInWithEmailAndPassword(
+                email: _legacyEmail(regNo),
+                password: password,
+              ));
+          if (user == null) {
+            throw 'Incorrect date of birth for this register number.';
           }
+          migratedLegacy = true;
         } else {
           throw AppHelpers.friendlyError(e2);
         }
       }
-    } catch (e) {
-      if (e is FirebaseAuthException) throw AppHelpers.friendlyError(e);
-      rethrow;
     }
-    final user = credential.user!;
+    if (user == null) {
+      throw 'Activation could not sign you in. Please try again.';
+    }
 
     // ---- Verify the DOB against the exam-cell record --------------------
+    final activeUser = user;
     try {
       final data = await _examCellRecord(regNo, migratedLegacy);
       if (data == null) {
@@ -165,13 +190,13 @@ class AuthService {
       // ---- Provision / refresh the students/{uid} profile ---------------
       final profile = await _studentFromRecord(
         data: data,
-        uid: user.uid,
+        uid: activeUser.uid,
         regNo: regNo,
         email: email,
       );
       await _db
           .collection(AppConstants.studentsCollection)
-          .doc(user.uid)
+          .doc(activeUser.uid)
           .set(profile, SetOptions(merge: true));
 
       // ---- Publish the login index (owner-guarded by the rules) ---------
@@ -181,14 +206,15 @@ class AuthService {
           _db.collection('loginIndex').doc(regNo).set({
             'registerNumber': regNo,
             'email': loginEmail,
-            'uid': user.uid,
+            'uid': activeUser.uid,
             'updatedAt': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
       await publishIndex(_legacyEmail(regNo));
 
       // ---- Claim the account: own password + own Gmail -------------------
-      await user.updatePassword(password);
-      await user.updateEmail(email);
+      await activeUser.updatePassword(password);
+      await _switchAuthEmail(activeUser, email);
+      await activeUser.reload();
       await publishIndex(email);
     } catch (e) {
       debugPrint('activateAccount failed: $e');
@@ -205,6 +231,39 @@ class AuthService {
         throw AppHelpers.friendlyError(e);
       }
       rethrow;
+    }
+  }
+
+  /// Switches the account's auth email to [newEmail] via the Identity
+  /// Toolkit REST API — the immediate equivalent of the removed
+  /// User.updateEmail (no verification link, no plugin cast quirks).
+  Future<void> _switchAuthEmail(User user, String newEmail) async {
+    final idToken = await user.getIdToken(true);
+    final apiKey = DefaultFirebaseOptions.currentPlatform.apiKey;
+    final client = HttpClient();
+    try {
+      final request = await client.postUrl(Uri.parse(
+          'https://identitytoolkit.googleapis.com/v1/accounts:update'
+          '?key=$apiKey'));
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode({
+        'idToken': idToken,
+        'email': newEmail,
+        'returnSecureToken': false,
+      }));
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+      if (response.statusCode != 200) {
+        final code = ((jsonDecode(body) as Map<String, dynamic>)['error']
+                as Map<String, dynamic>?)?['message'] ??
+            'UNKNOWN';
+        if (code.contains('EMAIL_EXISTS')) {
+          throw 'This Gmail is already registered to another account.';
+        }
+        throw 'Could not attach your Gmail ($code). Please try again.';
+      }
+    } finally {
+      client.close();
     }
   }
 
