@@ -77,7 +77,8 @@ class AuthService {
   /// Claim step: the student's own Gmail becomes the auth email and their
   /// own password replaces the DOB; `loginIndex` is published so future
   /// sign-ins resolve register number → Gmail and "Forgot Password" reaches
-  /// their real inbox.
+  /// their real inbox. No verification link is sent — the Gmail is collected
+  /// and confirmed by the student during activation itself.
   Future<void> activateAccount({
     required String registerNumber,
     required String dateOfBirth,
@@ -189,12 +190,6 @@ class AuthService {
       await user.updatePassword(password);
       await user.updateEmail(email);
       await publishIndex(email);
-
-      // Best-effort verification mail — the auth gate asks the student to
-      // click it before opening the dashboard.
-      try {
-        await user.sendEmailVerification();
-      } catch (_) {}
     } catch (e) {
       debugPrint('activateAccount failed: $e');
       if (migratedLegacy) {
