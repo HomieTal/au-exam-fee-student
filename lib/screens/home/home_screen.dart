@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:workmanager/workmanager.dart';
+
+import '../../services/fee_notification_service.dart';
 
 import '../../models/exam_fee.dart';
 import '../../models/payment.dart';
 import '../../models/student.dart';
 import '../../services/firestore_service.dart';
-import '../../services/upi_service.dart';
 import '../../services/update_service.dart';
 import '../../utils/helpers.dart';
 import '../../utils/theme.dart';
-import '../../utils/notifications.dart';
 import '../../widgets/fee_card.dart';
 import '../../widgets/loading_widget.dart';
 import '../../widgets/payment_status_card.dart';
 import '../exam_fee/exam_fee_screen.dart';
+import '../exam_fee/payment_submission_screen.dart';
 import '../exam_fee/registration_preview_screen.dart';
 import '../history/payment_history_screen.dart';
 import '../profile/profile_screen.dart';
@@ -144,6 +146,26 @@ class _HomeScreenState extends State<HomeScreen> {
     _examFeeStream = _firestoreService.examFeeStream(widget.student);
     _paymentStream = _firestoreService.latestPaymentStream(widget.student.uid);
     _healLoginIndex();
+    _setupFeeReminders();
+  }
+
+  /// Local fee reminders: ask for the notification permission, remind once
+  /// now if the exam fee is unpaid, and keep an hourly background check
+  /// running while the app is installed.
+  Future<void> _setupFeeReminders() async {
+    try {
+      await FeeNotificationService.requestPermission();
+      await FeeNotificationService.notifyIfFeeDue(widget.student);
+      await Workmanager().registerPeriodicTask(
+        'fee-check-${widget.student.uid}',
+        'feeCheckTask',
+        inputData: {'uid': widget.student.uid},
+        frequency: const Duration(hours: 1),
+        existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
+      );
+    } catch (_) {
+      // Reminders are best effort.
+    }
   }
 
   /// After the student clicks the verification link from activation,
@@ -558,47 +580,34 @@ class _PayButton extends StatefulWidget {
 }
 
 class _PayButtonState extends State<_PayButton> {
-  final _firestoreService = FirestoreService();
-  final _upiService = UpiService();
-
-  bool _openingUpi = false;
-
-  Future<void> _launchUpi() async {
+  void _openPreview() {
     final fee = widget.examFee;
     if (fee == null || fee.amount <= 0) return;
 
-    setState(() => _openingUpi = true);
-    try {
-      final settings = await _firestoreService.getPaymentSettings();
-      if (settings == null) {
-        if (mounted) {
-          AppNotifications.show(
-            context,
-            'UPI details have not been configured yet.',
-            error: true,
-          );
-        }
-        return;
-      }
-      final error = await _upiService.launchUpiApp(
-        settings: settings,
-        amount: fee.amount,
-        note: 'Exam Fee ${widget.student.registerNumber}',
-      );
-      if (!mounted) return;
-      if (error != null) {
-        AppNotifications.show(context, error, error: true);
-      } else {
-        AppNotifications.show(
-          context,
-          'Complete the payment in your UPI app, then tap Submit Payment '
-          'to submit the transaction details.',
-          success: true,
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _openingUpi = false);
-    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RegistrationPreviewScreen(
+          student: widget.student,
+          fallbackAmount: fee.amount,
+        ),
+      ),
+    );
+  }
+
+  void _openSubmission() {
+    final fee = widget.examFee;
+    if (fee == null || fee.amount <= 0) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PaymentSubmissionScreen(
+          student: widget.student,
+          amount: fee.amount,
+        ),
+      ),
+    );
   }
 
   @override
@@ -632,15 +641,7 @@ class _PayButtonState extends State<_PayButton> {
                   widget.onNavigate(1); // Exam Fee - shows submitted status
                   return;
                 }
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => RegistrationPreviewScreen(
-                      student: widget.student,
-                      fallbackAmount: fee.amount,
-                    ),
-                  ),
-                );
+                _openSubmission();
               },
         icon: Icon(
           p?.isVerified ?? false
@@ -666,23 +667,14 @@ class _PayButtonState extends State<_PayButton> {
         ? SizedBox(
             height: 48,
             child: OutlinedButton.icon(
-              onPressed: _openingUpi ? null : _launchUpi,
-              icon: _openingUpi
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2.2),
-                    )
-                  : const Icon(Icons.qr_code_2_rounded),
-              label: Text(
-                _openingUpi ? 'Opening UPI apps…' : 'Pay via UPI App',
-                style: const TextStyle(fontSize: 14),
-              ),
+              onPressed: _openPreview,
+              icon: const Icon(Icons.qr_code_2_rounded),
+              label: const Text('Pay', style: TextStyle(fontSize: 14)),
             ),
           )
         : null;
 
-    // Pay via UPI App sits above; Submit Payment below it.
+    // Pay opens the preview; Submit Payment opens the payment-details form.
     return Column(
       children: [
         if (upiButton != null) ...[upiButton, const SizedBox(height: 10)],

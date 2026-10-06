@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 
 import '../../models/student.dart';
 import '../../services/firestore_service.dart';
-import '../../utils/helpers.dart';
+import '../../services/upi_service.dart';
 import '../../utils/theme.dart';
-import 'payment_submission_screen.dart';
+import '../../utils/notifications.dart';
 
 /// Renders the Anna University "REGISTRATION PREVIEW" form (the same layout
 /// as the exam cell's PDF) for the signed-in student, and leads into the
@@ -34,8 +34,10 @@ class RegistrationPreviewScreen extends StatefulWidget {
 
 class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
   final _firestoreService = FirestoreService();
+  final _upiService = UpiService();
 
   bool _loading = true;
+  bool _openingUpi = false;
   Map<String, dynamic>? _legacy;
 
   @override
@@ -104,6 +106,36 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
     return v.toString();
   }
 
+  Future<void> _proceedToPay(double amount) async {
+    if (amount <= 0 || _openingUpi) return;
+
+    setState(() => _openingUpi = true);
+    try {
+      final settings = await _firestoreService.getPaymentSettings();
+      if (!mounted) return;
+      if (settings == null) {
+        AppNotifications.show(
+          context,
+          'UPI details have not been configured yet.',
+          error: true,
+        );
+        return;
+      }
+
+      final error = await _upiService.launchUpiApp(
+        settings: settings,
+        amount: amount,
+        note: 'Exam Fee ${widget.student.registerNumber}',
+      );
+      if (!mounted) return;
+      if (error != null) {
+        AppNotifications.show(context, error, error: true);
+      }
+    } finally {
+      if (mounted) setState(() => _openingUpi = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -125,8 +157,11 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
     final college =
         '${_str(_legacy, 'collegeName', widget.student.collegeName)}'
         '${_str(_legacy, 'collegeCode', widget.student.collegeCode).isNotEmpty ? " :: ${_str(_legacy, 'collegeCode', widget.student.collegeCode)}" : ''}';
-    final registerNumber = _str(_legacy, 'registerNumber',
-        widget.student.registerNumber);
+    final registerNumber = _str(
+      _legacy,
+      'registerNumber',
+      widget.student.registerNumber,
+    );
     final name = _str(_legacy, 'name', widget.student.name);
     final dob = widget.student.dateOfBirth;
     final dobText = dob != null
@@ -170,8 +205,15 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
                   const SizedBox(height: 14),
                   _headerBlock(theme, examSession),
                   const SizedBox(height: 10),
-                  _detailsTable(theme, college, registerNumber, name, dobText,
-                      degreeBranch, regulation),
+                  _detailsTable(
+                    theme,
+                    college,
+                    registerNumber,
+                    name,
+                    dobText,
+                    degreeBranch,
+                    regulation,
+                  ),
                   const SizedBox(height: 10),
                   _subjectsTable(theme, subjects),
                   const SizedBox(height: 10),
@@ -194,30 +236,30 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
               child: SizedBox(
                 height: 52,
                 child: ElevatedButton.icon(
-                  onPressed: amount <= 0
+                  onPressed: amount <= 0 || _openingUpi
                       ? null
-                      : () {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => PaymentSubmissionScreen(
-                                student: widget.student,
-                                amount: amount,
-                              ),
-                            ),
-                          );
-                        },
+                      : () => _proceedToPay(amount),
                   style: ElevatedButton.styleFrom(
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
-                    disabledBackgroundColor:
-                        AppTheme.primaryColor.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    disabledBackgroundColor: AppTheme.primaryColor.withValues(
+                      alpha: 0.5,
+                    ),
                   ),
-                  icon: const Icon(Icons.payment_rounded),
+                  icon: _openingUpi
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2.2),
+                        )
+                      : const Icon(Icons.payment_rounded),
                   label: Text(
-                    amount > 0
-                        ? 'Proceed to Payment – ${AppHelpers.formatAmount(amount)}'
-                        : 'Fee Not Announced',
+                    amount <= 0
+                        ? 'Fee Not Announced'
+                        : _openingUpi
+                        ? 'Opening Payment App…'
+                        : 'Proceed to Pay',
                     style: const TextStyle(fontSize: 15),
                   ),
                 ),
@@ -231,9 +273,7 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
 
   Widget _headerBlock(ThemeData theme, String examSession) {
     return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.black87),
-      ),
+      decoration: BoxDecoration(border: Border.all(color: Colors.black87)),
       padding: const EdgeInsets.all(10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -285,75 +325,83 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
     String regulation,
   ) {
     Widget cell(String label, String value, {bool bold = false}) => Padding(
-          padding: const EdgeInsets.all(8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(
-                    fontFamily: 'Poppins',
-                    fontSize: 11,
-                    color: Colors.black54),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                value.isEmpty ? '–' : value,
-                style: TextStyle(
-                  fontFamily: 'Poppins',
-                  fontSize: 12.5,
-                  fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
-                  color: Colors.black87,
-                ),
-              ),
-            ],
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 11,
+              color: Colors.black54,
+            ),
           ),
-        );
+          const SizedBox(height: 2),
+          Text(
+            value.isEmpty ? '–' : value,
+            style: TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 12.5,
+              fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+        ],
+      ),
+    );
 
     Widget sideCell(String label, String value) => Padding(
-          padding: const EdgeInsets.all(8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(
-                    fontFamily: 'Poppins',
-                    fontSize: 11,
-                    color: Colors.black54),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                value.isEmpty ? '–' : value,
-                style: const TextStyle(
-                  fontFamily: 'Poppins',
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
-                ),
-              ),
-            ],
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 11,
+              color: Colors.black54,
+            ),
           ),
-        );
+          const SizedBox(height: 2),
+          Text(
+            value.isEmpty ? '–' : value,
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+        ],
+      ),
+    );
 
     return Table(
       border: TableBorder.all(color: Colors.black54),
       defaultVerticalAlignment: TableCellVerticalAlignment.middle,
       children: [
-        TableRow(children: [
-          cell('College Name & Code', college),
-          sideCell('Register Number', registerNumber),
-        ]),
-        TableRow(children: [
-          cell('Name of the Candidate', name, bold: true),
-          sideCell('Date of Birth', dob),
-        ]),
-        TableRow(children: [
-          cell('Degree & Branch', degreeBranch),
-          sideCell('Regulations', regulation),
-        ]),
+        TableRow(
+          children: [
+            cell('College Name & Code', college),
+            sideCell('Register Number', registerNumber),
+          ],
+        ),
+        TableRow(
+          children: [
+            cell('Name of the Candidate', name, bold: true),
+            sideCell('Date of Birth', dob),
+          ],
+        ),
+        TableRow(
+          children: [
+            cell('Degree & Branch', degreeBranch),
+            sideCell('Regulations', regulation),
+          ],
+        ),
       ],
     );
   }
@@ -396,32 +444,32 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
           ],
         ),
         for (final s in subjects)
-          TableRow(children: [
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Center(
+          TableRow(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Center(
                   child: Text(
-                s['sem'].toString().isEmpty ? '–' : s['sem'],
-                style: cellStyle,
-              )),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Text(
-                s['code'].toString(),
-                style: cellStyle,
+                    s['sem'].toString().isEmpty ? '–' : s['sem'],
+                    style: cellStyle,
+                  ),
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Text(
-                (s['title'] as String).isEmpty
-                    ? _subjectTitle(s['code'].toString())
-                    : s['title'],
-                style: cellStyle,
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Text(s['code'].toString(), style: cellStyle),
               ),
-            ),
-          ]),
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Text(
+                  (s['title'] as String).isEmpty
+                      ? _subjectTitle(s['code'].toString())
+                      : s['title'],
+                  style: cellStyle,
+                ),
+              ),
+            ],
+          ),
       ],
     );
   }
@@ -441,38 +489,36 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.all(8),
+              child: Center(child: Text('No of Subjects', style: style)),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Center(child: Text('Total Fees (Payable)', style: style)),
+            ),
+          ],
+        ),
+        TableRow(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(8),
               child: Center(
-                child: Text('No of Subjects', style: style),
+                child: Text(
+                  '$count',
+                  style: style.copyWith(fontWeight: FontWeight.w600),
+                ),
               ),
             ),
             Padding(
               padding: const EdgeInsets.all(8),
               child: Center(
-                child: Text('Total Fees (Payable)', style: style),
+                child: Text(
+                  'Rs. ${amount.toStringAsFixed(0)}',
+                  style: style.copyWith(fontWeight: FontWeight.w600),
+                ),
               ),
             ),
           ],
         ),
-        TableRow(children: [
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: Center(
-              child: Text(
-                '$count',
-                style: style.copyWith(fontWeight: FontWeight.w600),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: Center(
-              child: Text(
-                'Rs. ${amount.toStringAsFixed(0)}',
-                style: style.copyWith(fontWeight: FontWeight.w600),
-              ),
-            ),
-          ),
-        ]),
       ],
     );
   }

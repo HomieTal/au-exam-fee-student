@@ -48,7 +48,9 @@ class _LoginScreenState extends State<LoginScreen> {
         registerNumber: _registerNumberController.text,
         password: _passwordController.text,
       );
-      // AuthGate listens to userChanges and navigates automatically.
+      // Refresh the Firebase user so verification/profile changes are visible
+      // before AuthGate rebuilds the authenticated shell.
+      await _authService.reloadCurrentUser();
     } catch (e) {
       if (mounted) {
         AppNotifications.show(context, e.toString(), error: true);
@@ -98,8 +100,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       borderRadius: BorderRadius.circular(24),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF34506E)
-                              .withValues(alpha: 0.08),
+                          color: const Color(
+                            0xFF34506E,
+                          ).withValues(alpha: 0.08),
                           blurRadius: 30,
                           offset: const Offset(0, 12),
                         ),
@@ -141,7 +144,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                     : Icons.visibility_off_outlined,
                               ),
                               onPressed: () => setState(
-                                  () => _obscurePassword = !_obscurePassword),
+                                () => _obscurePassword = !_obscurePassword,
+                              ),
                             ),
                           ),
                         ),

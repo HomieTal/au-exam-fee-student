@@ -1,18 +1,47 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:workmanager/workmanager.dart';
 
 import 'firebase_options.dart';
+import 'models/student.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/home/home_screen.dart';
+import 'services/auth_service.dart';
+import 'services/fee_notification_service.dart';
 import 'services/update_service.dart';
 import 'utils/constants.dart';
 import 'utils/theme.dart';
 import 'widgets/loading_widget.dart';
 
+/// Background fee check (WorkManager): runs roughly hourly while the app is
+/// installed and posts a local reminder while the exam fee is unpaid.
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((task, inputData) async {
+    try {
+      await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform);
+      final uid = inputData?['uid'] as String?;
+      if (uid == null || uid.isEmpty) return true;
+      final doc = await FirebaseFirestore.instance
+          .collection(AppConstants.studentsCollection)
+          .doc(uid)
+          .get();
+      if (!doc.exists) return true;
+      await FeeNotificationService.notifyIfFeeDue(Student.fromFirestore(doc));
+      return true;
+    } catch (_) {
+      return true;
+    }
+  });
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await Workmanager().initialize(callbackDispatcher);
   runApp(const AuExamFeeApp());
 }
 
@@ -56,7 +85,7 @@ class _AuthGateState extends State<AuthGate> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.userChanges(),
+      stream: AuthService().authStateChanges,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
