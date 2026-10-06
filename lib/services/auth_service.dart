@@ -18,13 +18,37 @@ class AuthService {
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  /// The live auth user, updated by a single permanent listener that is
+  /// wired once per app run. The AuthGate reads this instead of subscribing
+  /// to authStateChanges itself — a StreamBuilder that resubscribes on every
+  /// rebuild can miss emissions during the resubscription window, which made
+  /// successful sign-ins appear to "do nothing".
+  static final ValueNotifier<User?> currentUserNotifier =
+      ValueNotifier(null);
+  static final ValueNotifier<bool> authResolved = ValueNotifier(false);
+  static bool _notifierWired = false;
+
   /// Bumped on every auth-relevant action (activation, sign-in, sign-out).
-  /// The AuthGate listens to this and re-subscribes its auth stream, which
-  /// always re-emits the current user — covering missed stream events while
-  /// a pushed screen (activation) was on top.
+  /// Kept as an extra trigger for listeners; the currentUserNotifier above
+  /// is updated by the permanent authStateChanges listener.
   static final ValueNotifier<int> authRefreshTick = ValueNotifier(0);
 
   static void pingAuthRefresh() => authRefreshTick.value++;
+
+  void _wireNotifier() {
+    if (_notifierWired) return;
+    _notifierWired = true;
+    currentUserNotifier.value = _firebaseAuth.currentUser;
+    _firebaseAuth.authStateChanges().listen((user) {
+      debugPrint('authStateChanges → ${user?.uid ?? 'null'}');
+      currentUserNotifier.value = user;
+      authResolved.value = true;
+    });
+  }
+
+  AuthService() {
+    _wireNotifier();
+  }
 
   Stream<User?> get authStateChanges => _firebaseAuth.authStateChanges();
 

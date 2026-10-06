@@ -53,6 +53,9 @@ void callbackDispatcher() {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // Constructs the auth service so its permanent authStateChanges listener
+  // is wired before the gate renders (the gate reads the notifier it feeds).
+  AuthService();
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   await Workmanager().initialize(callbackDispatcher);
   runApp(const AuExamFeeApp());
@@ -97,22 +100,23 @@ class _AuthGateState extends State<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
-    // The ValueListenableBuilder re-subscribes the auth stream whenever a
-    // sign-in/sign-out/activation completes — the fresh subscription always
-    // re-emits the current user, so the gate can never miss an auth change
-    // that happened while a pushed screen was on top.
-    return ValueListenableBuilder<int>(
-      valueListenable: AuthService.authRefreshTick,
-      builder: (context, _, _) {
-        return StreamBuilder<User?>(
-          stream: AuthService().authStateChanges,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Scaffold(
-                body: LoadingWidget(message: 'Starting AU Exam Fee…'),
-              );
-            }
-            final user = snapshot.data;
+    // Reads the auth user from a ValueNotifier fed by ONE permanent
+    // authStateChanges listener (wired in AuthService). The earlier
+    // StreamBuilder-in-build approach resubscribed on every rebuild and
+    // could miss the sign-in emission, leaving the login screen up after a
+    // successful sign-in.
+    return ValueListenableBuilder<bool>(
+      valueListenable: AuthService.authResolved,
+      builder: (context, resolved, _) {
+        if (!resolved) {
+          return const Scaffold(
+            body: LoadingWidget(message: 'Starting AU Exam Fee…'),
+          );
+        }
+        return ValueListenableBuilder<User?>(
+          valueListenable: AuthService.currentUserNotifier,
+          builder: (context, user, _) {
+            debugPrint('gate rebuild → user=${user?.uid ?? 'null'}');
             if (user == null) return const LoginScreen();
             return HomeShell(uid: user.uid);
           },
