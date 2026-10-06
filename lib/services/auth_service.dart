@@ -18,6 +18,14 @@ class AuthService {
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  /// Bumped on every auth-relevant action (activation, sign-in, sign-out).
+  /// The AuthGate listens to this and re-subscribes its auth stream, which
+  /// always re-emits the current user — covering missed stream events while
+  /// a pushed screen (activation) was on top.
+  static final ValueNotifier<int> authRefreshTick = ValueNotifier(0);
+
+  static void pingAuthRefresh() => authRefreshTick.value++;
+
   Stream<User?> get authStateChanges => _firebaseAuth.authStateChanges();
 
   User? get currentUser => _firebaseAuth.currentUser;
@@ -64,6 +72,7 @@ class AuthService {
             .signInWithEmailAndPassword(email: email, password: password)
             .timeout(const Duration(seconds: 25));
         debugPrint('signIn: success via $email for ${credential.user?.uid}');
+        pingAuthRefresh();
         return credential;
       } on FirebaseAuthException catch (e) {
         debugPrint('signIn: FirebaseAuthException ${e.code} for $email');
@@ -249,6 +258,7 @@ class AuthService {
       // the student clicks the link (see HomeScreen).
       await activeUser.updatePassword(password);
       await activeUser.verifyBeforeUpdateEmail(email);
+      pingAuthRefresh();
     } catch (e) {
       debugPrint('activateAccount failed: $e');
       if (migratedLegacy) {
@@ -550,6 +560,7 @@ class AuthService {
         }
       }
       await _firebaseAuth.signOut();
+      pingAuthRefresh();
     } catch (_) {
       throw AppConstants.msgGenericError;
     }

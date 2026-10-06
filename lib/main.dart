@@ -97,17 +97,26 @@ class _AuthGateState extends State<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: AuthService().authStateChanges,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: LoadingWidget(message: 'Starting AU Exam Fee…'),
-          );
-        }
-        final user = snapshot.data;
-        if (user == null) return const LoginScreen();
-        return HomeShell(uid: user.uid);
+    // The ValueListenableBuilder re-subscribes the auth stream whenever a
+    // sign-in/sign-out/activation completes — the fresh subscription always
+    // re-emits the current user, so the gate can never miss an auth change
+    // that happened while a pushed screen was on top.
+    return ValueListenableBuilder<int>(
+      valueListenable: AuthService.authRefreshTick,
+      builder: (context, _, _) {
+        return StreamBuilder<User?>(
+          stream: AuthService().authStateChanges,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                body: LoadingWidget(message: 'Starting AU Exam Fee…'),
+              );
+            }
+            final user = snapshot.data;
+            if (user == null) return const LoginScreen();
+            return HomeShell(uid: user.uid);
+          },
+        );
       },
     );
   }
