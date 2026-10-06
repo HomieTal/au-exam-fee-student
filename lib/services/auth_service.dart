@@ -211,31 +211,13 @@ class AuthService {
     }
     final user = credential.user!;
 
-    // ---- Publish the login index FIRST (owner write) ---------------------
-    // The security rules let the claimant read the placeholder record only
-    // after their loginIndex entry exists, so it is published before the
-    // profile provisioning.
+    // ---- Provision the profile + publish the login index ----------------
+    // The activation record (read earlier, before the account existed)
+    // carries the full exam-cell profile data, so nothing here depends on
+    // another read and no rules race can occur.
     try {
-      await _db.collection('loginIndex').doc(regNo).set({
-        'registerNumber': regNo,
-        'email': email,
-        'personalEmail': email,
-        'uid': user.uid,
-        'activatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      final placeholder = await _db
-          .collection(AppConstants.studentsCollection)
-          .doc(regNo)
-          .get();
-      final recordData = placeholder.data() ?? {};
-      if ((recordData['registerNumber'] as String?) == null &&
-          recordData.isEmpty) {
-        recordData['registerNumber'] = regNo;
-      }
-
       final profile = await _studentFromRecord(
-        data: recordData,
+        data: activation.data() ?? {},
         uid: user.uid,
         regNo: regNo,
         email: email,
@@ -244,6 +226,14 @@ class AuthService {
           .collection(AppConstants.studentsCollection)
           .doc(user.uid)
           .set(profile, SetOptions(merge: true));
+
+      await _db.collection('loginIndex').doc(regNo).set({
+        'registerNumber': regNo,
+        'email': email,
+        'personalEmail': email,
+        'uid': user.uid,
+        'activatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
       pingAuthRefresh();
     } catch (e) {
       debugPrint('activateAccount failed: $e');
