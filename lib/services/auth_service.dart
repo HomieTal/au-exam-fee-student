@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -38,30 +40,62 @@ class AuthService {
   }
 
   /// Signs in with register number + the password chosen at activation.
+  ///
+  /// Tries the login-index email first, then the exam-cell identity as a
+  /// fallback — covering the window where the verification link has already
+  /// switched the account email but the index has not been refreshed yet.
   Future<UserCredential> signInWithRegisterNumber({
     required String registerNumber,
     required String password,
   }) async {
     final regNo = registerNumber.trim().toUpperCase();
-    final email = await resolveLoginEmail(regNo);
-    if (email == null) {
-      throw 'No activated account was found for this register number.\n'
-          'First time? Use "Activate your account" below.';
-    }
-    try {
-      return await _firebaseAuth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
-        throw 'Sign-in failed. If you forgot your password, use "Forgot '
-            'Password?" — otherwise contact the exam cell.';
+    debugPrint('signIn: resolving login index for $regNo');
+    final indexEmail = await resolveLoginEmail(regNo);
+    debugPrint('signIn: resolved email ${indexEmail ?? '<none>'}');
+
+    final candidates = <String>[
+      if (indexEmail != null) indexEmail,
+      _legacyEmail(regNo),
+    ];
+    Object? lastError;
+    for (final email in candidates) {
+      try {
+        final credential = await _firebaseAuth
+            .signInWithEmailAndPassword(email: email, password: password)
+            .timeout(const Duration(seconds: 25));
+        debugPrint('signIn: success via $email for ${credential.user?.uid}');
+        return credential;
+      } on FirebaseAuthException catch (e) {
+        debugPrint('signIn: FirebaseAuthException ${e.code} for $email');
+        // Wrong password → stop immediately; the other identity would fail
+        // with the same password anyway.
+        if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+          lastError = e;
+          break;
+        }
+        if (e.code == 'user-not-found' || e.code == 'too-many-requests') {
+          lastError = e;
+          continue;
+        }
+        throw AppHelpers.friendlyError(e);
+      } on TimeoutException {
+        lastError = TimeoutException(
+            'The sign-in request timed out. Check your internet connection '
+            'and try again.');
+        continue;
+      } catch (e) {
+        debugPrint('signIn: unexpected error $e');
+        lastError = e;
       }
-      throw AppHelpers.friendlyError(e);
-    } catch (e) {
-      throw AppHelpers.friendlyError(e);
     }
+    if (lastError is FirebaseAuthException) {
+      throw 'Sign-in failed. Please check your password, or use "Forgot '
+          'Password?" if you cannot remember it.';
+    }
+    if (lastError is TimeoutException) throw lastError.message ?? lastError;
+    if (lastError != null) throw AppHelpers.friendlyError(lastError);
+    throw 'No activated account was found for this register number.\n'
+        'First time? Use "Activate your account" below.';
   }
 
   /// One-time account activation.
@@ -492,6 +526,29 @@ class AuthService {
 
   Future<void> signOut() async {
     try {
+      // Capture the account's current email into the login index before the
+      // session ends: after the verification link is clicked, the auth email
+      // is the personal Gmail, and sign-in / password reset must resolve to
+      // it even if the in-app self-heal never ran.
+      final user = _firebaseAuth.currentUser;
+      final email = user?.email?.toLowerCase() ?? '';
+      if (user != null &&
+          email.isNotEmpty &&
+          !email.endsWith(AppConstants.studentEmailDomain)) {
+        try {
+          final profile = await _db
+              .collection(AppConstants.studentsCollection)
+              .doc(user.uid)
+              .get();
+          final regNo =
+              (profile.data()?['registerNumber'] as String?)?.toUpperCase();
+          if (regNo != null && regNo.isNotEmpty) {
+            await publishLoginIndex(registerNumber: regNo, email: email);
+          }
+        } catch (_) {
+          // Best effort — the dashboard self-heal covers it later.
+        }
+      }
       await _firebaseAuth.signOut();
     } catch (_) {
       throw AppConstants.msgGenericError;
