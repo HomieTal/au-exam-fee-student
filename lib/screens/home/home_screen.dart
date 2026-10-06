@@ -149,19 +149,21 @@ class _HomeScreenState extends State<HomeScreen> {
     _setupFeeReminders();
   }
 
-  /// Local fee reminders: ask for the notification permission, remind once
-  /// now if the exam fee is unpaid, and keep an hourly background check
-  /// running while the app is installed.
+  /// Local fee reminders + FCM registration: ask for the notification
+  /// permission, register the device for pushes, remind once now if the
+  /// exam fee is unpaid, and keep a 15-minute background check running
+  /// while the app is installed.
   Future<void> _setupFeeReminders() async {
     try {
       await FeeNotificationService.requestPermission();
+      await FeeNotificationService.registerPush(widget.student);
       await FeeNotificationService.notifyIfFeeDue(widget.student);
       await Workmanager().registerPeriodicTask(
         'fee-check-${widget.student.uid}',
         'feeCheckTask',
         inputData: {'uid': widget.student.uid},
-        frequency: const Duration(hours: 1),
-        existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
+        frequency: const Duration(minutes: 15),
+        existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
       );
     } catch (_) {
       // Reminders are best effort.

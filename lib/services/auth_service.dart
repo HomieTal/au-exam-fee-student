@@ -54,7 +54,7 @@ class AuthService {
     debugPrint('signIn: resolved email ${indexEmail ?? '<none>'}');
 
     final candidates = <String>[
-      if (indexEmail != null) indexEmail,
+      ?indexEmail,
       _legacyEmail(regNo),
     ];
     Object? lastError;
