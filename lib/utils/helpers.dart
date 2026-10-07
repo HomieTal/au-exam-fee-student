@@ -25,13 +25,21 @@ class AppHelpers {
   static String formatDateTime(DateTime date) =>
       DateFormat('dd MMM yyyy, hh:mm a').format(date);
 
-  /// Current academic year, e.g. "2026-2027" (Indian academic year starts
-  /// in June).
+  /// Current academic year, e.g. "2026–2027" (Indian academic year starts
+  /// in June). Uses the same en-dash format the Admin App writes into the
+  /// `fees` and `students` collections, so the values stay comparable.
   static String currentAcademicYear() {
     final now = DateTime.now();
     final startYear = now.month >= 6 ? now.year : now.year - 1;
-    return '$startYear-${startYear + 1}';
+    return '$startYear–${startYear + 1}';
   }
+
+  /// Canonical comparison key for an academic-year string. Older app
+  /// versions wrote "2026-2027" with a plain hyphen while the Admin App
+  /// writes "2026–2027" with an en dash; Firestore equality is
+  /// byte-exact, so comparisons must go through this key.
+  static String academicYearKey(String value) =>
+      value.replaceAll(RegExp(r'[\u2013\u2014\u2212]'), '-').trim();
 
   /// Converts a roman-numeral semester ("VII") to its integer (7). The
   /// `fees` collection stores the semester as an integer.

@@ -438,13 +438,10 @@ class ProfileScreen extends StatelessWidget {
 
     if (confirmed == true) {
       await AuthService().signOut();
-      // AuthGate switches back to LoginScreen via authStateChanges.
-      if (context.mounted) {
-        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-          (route) => false,
-        );
-      }
+      // AuthGate switches back to LoginScreen via authStateChanges. Do NOT
+      // push a LoginScreen route here: pushAndRemoveUntil removes the gate's
+      // route, unmounting the one listener that reacts to the next sign-in —
+      // the student signs in successfully and nothing happens.
     }
   }
 }

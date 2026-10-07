@@ -111,10 +111,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
           'Registration successful! Please sign in.',
           success: true,
         );
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-          (route) => false,
-        );
+        // createUserWithEmailAndPassword signs the fresh account in; sign out
+        // so the AuthGate (still mounted underneath) shows the login screen.
+        // Pushing a LoginScreen route with pushAndRemoveUntil would remove
+        // the gate's route and leave the next sign-in without navigation.
+        try {
+          await _authService.signOut();
+        } catch (_) {}
+        if (mounted) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        }
       }
     } catch (e) {
       if (mounted) {

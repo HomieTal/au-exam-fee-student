@@ -4,6 +4,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../models/student.dart';
 import '../utils/constants.dart';
+import '../utils/helpers.dart';
 
 /// Exam-fee notifications for the Student App.
 ///
@@ -156,17 +157,26 @@ class FeeNotificationService {
     }
 
     // Last date from the active fee configuration for this department,
-    // semester and academic year.
+    // semester and academic year. The year is matched client-side after
+    // normalization (dash vs en-dash spellings exist in stored data).
+    final yearKey = AppHelpers.academicYearKey(student.academicYear);
     DateTime? lastDate;
     final feeConfig = await FirebaseFirestore.instance
         .collection('fees')
         .where('department', isEqualTo: student.department)
         .where('semester', isEqualTo: student.semester)
-        .where('academicYear', isEqualTo: student.academicYear)
         .get();
     for (final doc in feeConfig.docs) {
-      if (doc.data()['isActive'] != true) continue;
-      final raw = doc.data()['lastDate'];
+      final data = doc.data();
+      if (data['isActive'] != true) continue;
+      if (data['type'] == 'student_fee') continue;
+      if (AppHelpers.academicYearKey(
+            data['academicYear'] as String? ?? '',
+          ) !=
+          yearKey) {
+        continue;
+      }
+      final raw = data['lastDate'];
       if (raw is Timestamp) lastDate = raw.toDate();
     }
 

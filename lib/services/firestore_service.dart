@@ -182,17 +182,31 @@ class FirestoreService {
   /// Live stream of the active exam fee for this student's department,
   /// semester and academic year from the `fees` collection – the same
   /// configuration the Admin App's "Fees" tab maintains.
+  ///
+  /// The academic year is matched client-side through
+  /// [AppHelpers.academicYearKey] instead of an exact Firestore equality:
+  /// profiles and fee configs exist in both dash ("2026-2027") and en-dash
+  /// ("2026–2027") spellings, and an exact filter silently hid the fee for
+  /// students provisioned with the other spelling. Per-student fee records
+  /// (`type: 'student_fee'`, written by the Registration Preview import)
+  /// live in the same collection and are skipped explicitly.
   Stream<ExamFee?> examFeeStream(Student student) {
+    final yearKey = AppHelpers.academicYearKey(student.academicYear);
     return _db
         .collection('fees')
         .where('department', isEqualTo: student.department)
         .where('semester', isEqualTo: student.semester)
-        .where('academicYear', isEqualTo: student.academicYear)
         .snapshots()
         .map((snap) {
-          final active = snap.docs
-              .where((doc) => doc.data()['isActive'] == true)
-              .toList();
+          final active = snap.docs.where((doc) {
+            final data = doc.data();
+            if (data['isActive'] != true) return false;
+            if (data['type'] == 'student_fee') return false;
+            return AppHelpers.academicYearKey(
+                  data['academicYear'] as String? ?? '',
+                ) ==
+                yearKey;
+          }).toList();
           return active.isEmpty
               ? null
               : ExamFee.fromFeeData(active.first.data());
