@@ -30,6 +30,28 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.get('role', '') in ['admin', 'superadmin', 'department_admin', 'exam_cell']
         && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.get('status', 'active') != 'blocked';
     }
+ 
+    // These two collections are used before a student has authenticated.
+    // activation stores only a salted DOB hash; loginIndex stores the email
+    // needed to resolve register-number sign-in and password resets.
+    match /activation/{registerNumber} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /loginIndex/{registerNumber} {
+      allow read: if true;
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.registerNumber == registerNumber
+        && request.resource.data.email.lower() == request.auth.token.email.lower();
+      allow update: if isSignedIn()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.registerNumber == registerNumber
+        && request.resource.data.email.lower() == request.auth.token.email.lower();
+      allow delete: if isAdmin();
+    }
 
     // ── Students ────────────────────────────────────────────────────────
     match /students/{uid} {

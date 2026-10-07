@@ -86,8 +86,8 @@ class _ActivationScreenState extends State<ActivationScreen> {
       // dashboard, so close the activation flow.
       AppNotifications.show(
         context,
-        'Account activated! A verification link was sent to your Gmail — '
-        'click it to enable password resets.',
+        'Account activated successfully. You can now use your password to '
+        'sign in.',
         success: true,
       );
       Navigator.of(context).popUntil((route) => route.isFirst);

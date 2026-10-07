@@ -66,10 +66,11 @@ class AuthService {
     final regNo = registerNumber.trim().toUpperCase();
     try {
       final doc = await _db.collection('loginIndex').doc(regNo).get();
-      final email = doc.data()?['email'] as String?;
-      return (email == null || email.isEmpty) ? null : email;
-    } catch (_) {
-      return null;
+      final email = doc.data()?['email'];
+      if (email is! String || email.trim().isEmpty) return null;
+      return email.trim().toLowerCase();
+    } on FirebaseException catch (e) {
+      throw AppHelpers.friendlyError(e);
     }
   }
 
@@ -87,10 +88,10 @@ class AuthService {
     final indexEmail = await resolveLoginEmail(regNo);
     debugPrint('signIn: resolved email ${indexEmail ?? '<none>'}');
 
-    final candidates = <String>[
-      ?indexEmail,
-      _legacyEmail(regNo),
-    ];
+    final candidates = <String>[_legacyEmail(regNo)];
+    if (indexEmail != null && indexEmail != candidates.first) {
+      candidates.insert(0, indexEmail);
+    }
     Object? lastError;
     for (final email in candidates) {
       try {

@@ -8,15 +8,13 @@ class AppConstants {
   // ── App info ────────────────────────────────────────────────────────────
   static const String appName = 'AU Exam Fee';
   static const String appTagline = 'Anna University – Exam Fee Portal';
-  static const String appVersion = '1.0.6';
+  static const String appVersion = '1.2.0';
   static const String developerName = 'CrackDevelopers';
   static const String developerEmail = 'crackdevelopersdot@gmail.com';
 
-  // ── Auto-provisioned student accounts ───────────────────────────────────
-  // Students sign in with their register number + date of birth; the auth
-  // account is created on first sign-in with the register number mapped to
-  // this domain. Their personal email is collected (and verified) after
-  // the first login.
+  // ── Legacy student accounts ─────────────────────────────────────────────
+  // Kept for compatibility with accounts created before Gmail-first
+  // activation. New accounts use the personal email chosen during activation.
   static const String studentEmailDomain = '@au.edu.in';
 
   // ── In-app updates (GitHub releases) ────────────────────────────────────
