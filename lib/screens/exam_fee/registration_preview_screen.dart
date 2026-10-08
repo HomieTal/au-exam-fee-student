@@ -106,6 +106,18 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
     return v.toString();
   }
 
+  String _firstStr(
+    Map<String, dynamic>? map,
+    List<String> keys, [
+    String fallback = '',
+  ]) {
+    for (final key in keys) {
+      final value = _str(map, key);
+      if (value.trim().isNotEmpty) return value.trim();
+    }
+    return fallback;
+  }
+
   Future<void> _proceedToPay(double amount) async {
     if (amount <= 0 || _openingUpi) return;
 
@@ -154,9 +166,19 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
     final examSession = widget.student.examFeeSession.isNotEmpty
         ? widget.student.examFeeSession
         : 'Nov. / Dec. Examination, 2026 Examination';
-    final college =
-        '${_str(_legacy, 'collegeName', widget.student.collegeName)}'
-        '${_str(_legacy, 'collegeCode', widget.student.collegeCode).isNotEmpty ? " :: ${_str(_legacy, 'collegeCode', widget.student.collegeCode)}" : ''}';
+    final collegeName = _firstStr(
+      _legacy,
+      ['collegeName', 'college', 'institutionName', 'college_name'],
+      widget.student.collegeName,
+    );
+    final collegeCode = _firstStr(
+      _legacy,
+      ['collegeCode', 'institutionCode', 'college_code', 'collegeId'],
+      widget.student.collegeCode,
+    );
+    final college = collegeName.isEmpty && collegeCode.isEmpty
+        ? '–'
+        : '$collegeName${collegeCode.isNotEmpty ? " :: $collegeCode" : ''}';
     final registerNumber = _str(
       _legacy,
       'registerNumber',
@@ -173,8 +195,12 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
     ].where((s) => s.isNotEmpty).join(' ');
     final regulation = _str(_legacy, 'regulation', widget.student.regulation);
 
+    final rawSubjects = _legacy?['subjects'];
+    final previewSubjects = rawSubjects is List
+        ? Student.parseLegacySubjects(rawSubjects)
+        : widget.student.subjects;
     final subjects = <Map<String, dynamic>>[];
-    for (final s in widget.student.subjects) {
+    for (final s in previewSubjects) {
       subjects.add({
         'sem': _str(s, 'sem').isEmpty
             ? (widget.student.semester > 0 ? widget.student.semesterLabel : '')
@@ -462,9 +488,9 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
               Padding(
                 padding: const EdgeInsets.all(8),
                 child: Text(
-                  (s['title'] as String).isEmpty
+                  (s['title'] as String).trim().isEmpty
                       ? _subjectTitle(s['code'].toString())
-                      : s['title'],
+                      : s['title'].toString(),
                   style: cellStyle,
                 ),
               ),
@@ -525,9 +551,13 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
 
   static const Map<String, String> _subjectTitles = {
     'CME365': 'Renewable Energy Technologies',
+    'CS371': 'Computer Science Elective',
     'CS3711': 'Summer internship',
+    'GE375': 'Professional Elective',
     'GE3751': 'Principles of Management',
+    'GE379': 'Professional Elective',
     'GE3791': 'Human Values and Ethics',
+    'NM106': 'Cloud Engineering',
     'NM1068': 'Cloud Engineering',
     'OHS352': 'Project Report Writing',
     'OBT351': 'Food, Nutrition and Health',

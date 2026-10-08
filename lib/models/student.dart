@@ -133,9 +133,16 @@ class Student {
     for (final item in raw) {
       if (item is Map) {
         out.add({
-          'sem': item['sem'] ?? '',
-          'code': item['code'] ?? '',
-          'title': item['title'] ?? '',
+          'sem': item['sem'] ?? item['semester'] ?? item['semNo'] ?? '',
+          'code': item['code'] ??
+              item['subjectCode'] ??
+              item['subject_code'] ??
+              '',
+          'title': item['title'] ??
+              item['subjectTitle'] ??
+              item['subjectName'] ??
+              item['name'] ??
+              '',
         });
       } else if (item is String && item.trim().isNotEmpty) {
         out.add({'sem': '', 'code': item.trim(), 'title': ''});
