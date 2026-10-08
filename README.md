@@ -9,7 +9,7 @@ through the same Firebase project (`au-fee`).
 |---|---|
 | Package name | `com.annauniv.auexamfee` |
 | Firebase project | `au-fee` |
-| Services | Firebase Authentication, Cloud Firestore, Firebase Storage |
+| Services | Firebase Authentication, Cloud Firestore, on-device OCR |
 | Status flow | `pending` → `verified` \| `rejected` (set by the Admin App) |
 
 ---
@@ -28,7 +28,7 @@ lib/
 ├── services/
 │   ├── auth_service.dart         # Firebase Auth (sign-in/register/reset/logout)
 │   ├── firestore_service.dart    # profile + payments + settings access
-│   └── storage_service.dart      # payment screenshot uploads
+│   └── receipt_ocr_service.dart  # local receipt extraction/validation
 ├── screens/
 │   ├── auth/
 │   │   ├── login_screen.dart     # email/password sign-in
@@ -109,16 +109,12 @@ Firebase Console → **Firestore Database** → *Create database* (production
 mode), then publish the contents of **`firestore.rules`** from this repo
 (Console → Firestore → Rules, or `firebase deploy --only firestore:rules`).
 
-### 3.3 Enable Storage (required for screenshot uploads)
+### 3.3 Storage
 
-Firebase Console → **Storage** → *Get started* (production mode), then
-publish the contents of **`storage.rules`**
-(Console → Storage → Rules, or `firebase deploy --only storage`).
-
-> New Firebase Storage buckets require the **Blaze (pay-as-you-go) plan** —
-> link a billing account when prompted. Until Storage is provisioned, payment
-> submissions stop at the screenshot upload with a friendly error; every
-> other feature works normally.
+New payment submissions use on-device OCR and do not require Firebase Storage
+or a billing account. The existing `storage.rules` file is retained only for
+old payment records whose `screenshotUrl` points to a legacy Firebase Storage
+image.
 
 ### 3.4 Admin users (needed for verification to work)
 
@@ -182,11 +178,28 @@ No composite indexes are required — queries filter on `studentUid` only and
 sort client-side. Passwords are never stored in Firestore; Firebase Auth
 manages credentials.
 
-## 5. Firebase Storage structure
+## 5. Receipt verification
 
 ```text
-payments/{studentUid}/{paymentId}.jpg   # max 5 MB, images only
+Student selects receipt screenshot
+  → on-device OCR extracts receipt text
+  → entered transaction ID must appear in the OCR text
+  → entered fee amount must appear in the OCR text
+  → verified fields + receiptText are saved to Firestore
 ```
+
+New submissions do not upload or store the screenshot, so Firebase Storage is
+not required for payment submission. The screenshot remains on the device only
+while OCR runs. Existing payments containing `screenshotUrl` remain
+backward-compatible and continue to display their old Firebase Storage image.
+
+Transaction duplicate detection checks only the signed-in student's own
+payments and normalizes letter case, spaces, and separators before comparing.
+Different students may use the same identifier in their separate records.
+
+New payment documents include `receiptText`, `verificationMethod: "local_ocr"`,
+and `status: "pending"`. OCR is a convenience check; the Admin App still
+approves or rejects every submission.
 
 ---
 
@@ -208,8 +221,8 @@ payments/{studentUid}/{paymentId}.jpg   # max 5 MB, images only
 ## 7. How student ↔ admin integration works
 
 1. Student submits payment → `payments/{id}` created with `status: pending`
-   and the screenshot in Storage.
-2. Admin App lists pending payments, views the transaction ID + screenshot,
+   and the OCR receipt text.
+2. Admin App lists pending payments, views the transaction ID + receipt text,
    then **verifies** (sets `status: verified`, `verifiedAt`) or **rejects**
    (sets `status: rejected`, `rejectionReason`).
 3. The student app listens with real-time streams (`snapshots()`), so the

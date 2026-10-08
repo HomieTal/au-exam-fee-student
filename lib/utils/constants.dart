@@ -8,7 +8,7 @@ class AppConstants {
   // ── App info ────────────────────────────────────────────────────────────
   static const String appName = 'AU Exam Fee';
   static const String appTagline = 'Anna University – Exam Fee Portal';
-  static const String appVersion = '1.2.2';
+  static const String appVersion = '1.2.3';
   static const String developerName = 'CrackDevelopers';
   static const String developerEmail = 'crackdevelopersdot@gmail.com';
 
@@ -39,10 +39,7 @@ class AppConstants {
   static const String paymentSettingsDoc = 'payment';
   static const String adminsCollection = 'admins';
 
-  // ── Firebase Storage ────────────────────────────────────────────────────
-  static const String screenshotsFolder = 'payments';
-
-  /// Max allowed payment screenshot size (5 MB).
+  /// Max allowed receipt screenshot size (5 MB).
   static const int maxScreenshotBytes = 5 * 1024 * 1024;
 
   // ── Student form choices ────────────────────────────────────────────────

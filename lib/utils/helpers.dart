@@ -176,7 +176,7 @@ class AppHelpers {
         case 'cancelled':
           return 'The operation was cancelled.';
         case 'object-not-found':
-          return 'The requested file was not found.';
+          return 'The requested payment proof is no longer available.';
         case 'unauthenticated':
           return 'Your session has expired. Please sign in again.';
         default:

@@ -115,21 +115,27 @@ class FirestoreService {
       final snap = await _payments
           .where('studentUid', isEqualTo: uid)
           .get();
-      final needle = transactionId.trim().toLowerCase();
-      return snap.docs
-          .map((d) => (d.data()['transactionId'] as String? ?? '').toLowerCase())
-          .contains(needle);
+      final needle = _normalizeTransactionId(transactionId);
+      if (needle.isEmpty) return false;
+      return snap.docs.any((d) {
+        final existing = d.data()['transactionId'] as String? ?? '';
+        return _normalizeTransactionId(existing) == needle;
+      });
     } catch (e) {
       throw AppHelpers.friendlyError(e);
     }
+
   }
+
+  String _normalizeTransactionId(String value) =>
+      value.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
 
   /// Pre-allocates a payment document id (used for the Storage path before
   /// the payment document is written).
   String newPaymentId() => _payments.doc().id;
 
   /// Creates a payment document with `status: pending`.
-  /// The screenshot must already be uploaded – pass its download URL.
+  /// Receipt text is verified on-device before this document is created.
   Future<String> submitPayment({
     String? paymentId,
     required Student student,
@@ -137,7 +143,9 @@ class FirestoreService {
     required String transactionId,
     required DateTime paymentDate,
     required String paymentMethod,
-    required String screenshotUrl,
+    String screenshotUrl = '',
+    String receiptText = '',
+    String verificationMethod = 'local_ocr',
   }) async {
     final docRef =
         paymentId != null ? _payments.doc(paymentId) : _payments.doc();
@@ -152,6 +160,8 @@ class FirestoreService {
       paymentDate: paymentDate,
       paymentMethod: paymentMethod,
       screenshotUrl: screenshotUrl,
+      receiptText: receiptText,
+      verificationMethod: verificationMethod,
       status: AppConstants.statusPending,
       submittedAt: DateTime.now(),
     );

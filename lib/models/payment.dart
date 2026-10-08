@@ -18,6 +18,8 @@ class Payment {
   final DateTime paymentDate;
   final String paymentMethod;
   final String screenshotUrl;
+  final String receiptText;
+  final String verificationMethod;
   final String status;
   final String? rejectionReason;
   final DateTime submittedAt;
@@ -34,6 +36,8 @@ class Payment {
     required this.paymentDate,
     required this.paymentMethod,
     required this.screenshotUrl,
+    this.receiptText = '',
+    this.verificationMethod = '',
     required this.status,
     this.rejectionReason,
     required this.submittedAt,
@@ -59,6 +63,8 @@ class Payment {
       paymentDate: _toDate(data['paymentDate']),
       paymentMethod: data['paymentMethod'] as String? ?? 'UPI',
       screenshotUrl: data['screenshotUrl'] as String? ?? '',
+      receiptText: data['receiptText'] as String? ?? '',
+      verificationMethod: data['verificationMethod'] as String? ?? '',
       status: data['status'] as String? ?? 'pending',
       rejectionReason: data['rejectionReason'] as String?,
       submittedAt: _toDate(data['submittedAt']),
@@ -85,6 +91,8 @@ class Payment {
       'paymentDate': paymentDate,
       'paymentMethod': paymentMethod,
       'screenshotUrl': screenshotUrl,
+      'receiptText': receiptText,
+      'verificationMethod': verificationMethod,
       'status': status,
       'rejectionReason': rejectionReason,
       'submittedAt': submittedAt,

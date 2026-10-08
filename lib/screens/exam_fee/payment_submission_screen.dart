@@ -5,7 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../models/student.dart';
 import '../../services/firestore_service.dart';
-import '../../services/storage_service.dart';
+import '../../services/receipt_ocr_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/helpers.dart';
 import '../../utils/validators.dart';
@@ -14,8 +14,8 @@ import '../../utils/notifications.dart';
 /// Payment submission form: transaction ID / UTR, payment date, payment
 /// method and a required screenshot of the payment proof.
 ///
-/// On submit: screenshot → Firebase Storage (`payments/{uid}/{paymentId}.jpg`),
-/// payment document → Firestore with `status: pending`.
+/// On submit: receipt screenshot → on-device OCR validation → Firestore
+/// payment document with `status: pending`. The screenshot is not uploaded.
 class PaymentSubmissionScreen extends StatefulWidget {
   final Student student;
   final double amount;
@@ -36,7 +36,7 @@ class PaymentSubmissionScreen extends StatefulWidget {
 class _PaymentSubmissionScreenState extends State<PaymentSubmissionScreen> {
   final _formKey = GlobalKey<FormState>();
   final _firestoreService = FirestoreService();
-  final _storageService = StorageService();
+  final _receiptOcrService = ReceiptOcrService();
   final _imagePicker = ImagePicker();
 
   final _transactionIdController = TextEditingController();
@@ -127,16 +127,15 @@ class _PaymentSubmissionScreenState extends State<PaymentSubmissionScreen> {
             'Please check and enter the correct one.';
       }
 
-      // 4. Upload the screenshot; keep the payment id so the admin app can
-      //    trace the file back to the payment document.
-      final paymentId = _firestoreService.newPaymentId();
-      final screenshotUrl = await _storageService.uploadPaymentScreenshot(
-        studentUid: widget.student.uid,
-        paymentId: paymentId,
+      // 4. Verify the receipt locally before writing any payment document.
+      final receipt = await _receiptOcrService.readReceipt(
         screenshot: _screenshot!,
+        expectedTransactionId: _transactionIdController.text,
+        expectedAmount: widget.amount,
       );
+      final paymentId = _firestoreService.newPaymentId();
 
-      // 5. Create the payment document with status = pending.
+      // 5. Create the payment document only after OCR validation succeeds.
       await _firestoreService.submitPayment(
         paymentId: paymentId,
         student: widget.student,
@@ -144,7 +143,8 @@ class _PaymentSubmissionScreenState extends State<PaymentSubmissionScreen> {
         transactionId: _transactionIdController.text,
         paymentDate: _paymentDate!,
         paymentMethod: _paymentMethod!,
-        screenshotUrl: screenshotUrl,
+        receiptText: receipt.text,
+        verificationMethod: 'local_ocr',
       );
 
       if (!mounted) return;

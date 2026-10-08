@@ -212,28 +212,56 @@ class PaymentDetailsScreen extends StatelessWidget {
           const SizedBox(height: 16),
           Text('Payment Proof', style: theme.textTheme.titleLarge),
           const SizedBox(height: 8),
-          GestureDetector(
-            onTap: () => _viewScreenshotFullscreen(context),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: CachedNetworkImage(
-                imageUrl: payment.screenshotUrl,
-                height: 220,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                placeholder: (_, _) => Container(
+          if (payment.screenshotUrl.isNotEmpty)
+            GestureDetector(
+              onTap: () => _viewScreenshotFullscreen(context),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: CachedNetworkImage(
+                  imageUrl: payment.screenshotUrl,
                   height: 220,
-                  color: theme.dividerColor.withValues(alpha: 0.3),
-                  child: const LoadingWidget(),
-                ),
-                errorWidget: (_, _, _) => Container(
-                  height: 160,
-                  color: theme.dividerColor.withValues(alpha: 0.3),
-                  child: const Icon(Icons.broken_image_outlined, size: 40),
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  placeholder: (_, _) => Container(
+                    height: 220,
+                    color: theme.dividerColor.withValues(alpha: 0.3),
+                    child: const LoadingWidget(),
+                  ),
+                  errorWidget: (_, _, _) => Container(
+                    height: 160,
+                    color: theme.dividerColor.withValues(alpha: 0.3),
+                    child: const Icon(Icons.broken_image_outlined, size: 40),
+                  ),
                 ),
               ),
+            )
+          else
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.2),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Receipt verified on this device',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  SelectableText(
+                    payment.receiptText.isEmpty
+                        ? 'Receipt text is not available.'
+                        : payment.receiptText,
+                  ),
+                ],
+              ),
             ),
-          ),
           const SizedBox(height: 24),
         ],
       ),
