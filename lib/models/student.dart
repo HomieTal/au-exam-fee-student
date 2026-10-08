@@ -78,6 +78,12 @@ class Student {
 
   factory Student.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
+    final college = _parseCollege(
+      data['college'] ??
+          data['collegeNameAndCode'] ??
+          data['institution'] ??
+          '',
+    );
     return Student(
       uid: data['uid'] as String? ?? doc.id,
       name: data['name'] as String? ?? '',
@@ -90,8 +96,8 @@ class Student {
       phone: data['phone'] as String? ?? '',
       academicYear: data['academicYear'] as String? ?? '',
       university: data['university'] as String? ?? '',
-      collegeName: data['collegeName'] as String? ?? '',
-      collegeCode: data['collegeCode'] as String? ?? '',
+      collegeName: data['collegeName'] as String? ?? college.$1,
+      collegeCode: data['collegeCode'] as String? ?? college.$2,
       degree: data['degree'] as String? ?? '',
       branch: data['branch'] as String? ?? '',
       regulation: data['regulation'] as String? ?? '',
@@ -132,12 +138,15 @@ class Student {
     final out = <Map<String, dynamic>>[];
     for (final item in raw) {
       if (item is Map) {
-        out.add({
-          'sem': item['sem'] ?? item['semester'] ?? item['semNo'] ?? '',
-          'code': item['code'] ??
+        final code = _canonicalSubjectCode(
+          item['code'] ??
               item['subjectCode'] ??
               item['subject_code'] ??
               '',
+        );
+        out.add({
+          'sem': item['sem'] ?? item['semester'] ?? item['semNo'] ?? '',
+          'code': code,
           'title': item['title'] ??
               item['subjectTitle'] ??
               item['subjectName'] ??
@@ -145,10 +154,34 @@ class Student {
               '',
         });
       } else if (item is String && item.trim().isNotEmpty) {
-        out.add({'sem': '', 'code': item.trim(), 'title': ''});
+        out.add({
+          'sem': '',
+          'code': _canonicalSubjectCode(item.trim()),
+          'title': '',
+        });
       }
+
     }
     return out;
+  }
+
+  static String _canonicalSubjectCode(dynamic raw) {
+    final code = raw.toString().trim().toUpperCase();
+    const aliases = {
+      'CS371': 'CS3711',
+      'GE375': 'GE3751',
+      'GE379': 'GE3791',
+      'NM106': 'NM1068',
+    };
+    return aliases[code] ?? code;
+  }
+
+  static (String, String) _parseCollege(dynamic raw) {
+    final value = raw.toString().trim();
+    if (value.isEmpty) return ('', '');
+    final parts = value.split(RegExp(r'\s*::\s*'));
+    if (parts.length > 1) return (parts.first.trim(), parts.last.trim());
+    return (value, '');
   }
 
   Map<String, dynamic> toMap() {

@@ -118,6 +118,19 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
     return fallback;
   }
 
+  String _collegeValue(String key, String fallback) {
+    final direct = _firstStr(_legacy, [key]);
+    if (direct.isNotEmpty) return direct;
+    final combined = _firstStr(
+      _legacy,
+      ['college', 'collegeNameAndCode', 'institution'],
+    );
+    if (combined.isEmpty) return fallback;
+    final parts = combined.split(RegExp(r'\s*::\s*'));
+    if (key == 'collegeCode' && parts.length > 1) return parts.last.trim();
+    return parts.first.trim();
+  }
+
   Future<void> _proceedToPay(double amount) async {
     if (amount <= 0 || _openingUpi) return;
 
@@ -166,16 +179,8 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
     final examSession = widget.student.examFeeSession.isNotEmpty
         ? widget.student.examFeeSession
         : 'Nov. / Dec. Examination, 2026 Examination';
-    final collegeName = _firstStr(
-      _legacy,
-      ['collegeName', 'college', 'institutionName', 'college_name'],
-      widget.student.collegeName,
-    );
-    final collegeCode = _firstStr(
-      _legacy,
-      ['collegeCode', 'institutionCode', 'college_code', 'collegeId'],
-      widget.student.collegeCode,
-    );
+    final collegeName = _collegeValue('collegeName', widget.student.collegeName);
+    final collegeCode = _collegeValue('collegeCode', widget.student.collegeCode);
     final college = collegeName.isEmpty && collegeCode.isEmpty
         ? '–'
         : '$collegeName${collegeCode.isNotEmpty ? " :: $collegeCode" : ''}';
