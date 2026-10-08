@@ -194,10 +194,9 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
     final dobText = dob != null
         ? '${dob.day.toString().padLeft(2, '0')}-${dob.month.toString().padLeft(2, '0')}-${dob.year}'
         : '–';
-    final degreeBranch = [
-      _str(_legacy, 'degree', widget.student.degree),
-      _str(_legacy, 'branch', widget.student.branch),
-    ].where((s) => s.isNotEmpty).join(' ');
+    final degree = _str(_legacy, 'degree', widget.student.degree).trim();
+    final branch = _str(_legacy, 'branch', widget.student.branch).trim();
+    final degreeBranch = _combineDegreeAndBranch(degree, branch);
     final regulation = _str(_legacy, 'regulation', widget.student.regulation);
 
     final rawSubjects = _legacy?['subjects'];
@@ -300,6 +299,20 @@ class _RegistrationPreviewScreenState extends State<RegistrationPreviewScreen> {
         ],
       ),
     );
+  }
+
+  String _combineDegreeAndBranch(String degree, String branch) {
+    if (degree.isEmpty) return branch;
+    if (branch.isEmpty) return degree;
+    final normalizedDegree =
+        degree.toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+    final normalizedBranch =
+        branch.toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+    if (normalizedDegree == normalizedBranch ||
+        normalizedDegree.contains(normalizedBranch)) {
+      return degree;
+    }
+    return '$degree $branch';
   }
 
   Widget _headerBlock(ThemeData theme, String examSession) {

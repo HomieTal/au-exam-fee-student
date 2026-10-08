@@ -38,6 +38,10 @@ class ReceiptOcrService {
       if (text.isEmpty) {
         throw 'No readable payment details were found in the screenshot.';
       }
+      if (_containsFailureMessage(text)) {
+        throw 'This receipt shows that the payment failed or was not debited. '
+            'Please submit a successful payment receipt.';
+      }
       if (!compactText.contains(expectedId)) {
         throw 'The transaction ID in the screenshot does not match the entered ID.';
       }
@@ -60,6 +64,22 @@ class ReceiptOcrService {
 
   String _compact(String value) =>
       value.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+
+  bool _containsFailureMessage(String text) {
+    final normalized = text.toLowerCase();
+    const failureMessages = [
+      'not been debited',
+      'not debited',
+      'payment failed',
+      'transaction failed',
+      'declined',
+      'unsuccessful',
+      'cancelled',
+      'canceled',
+      'exceeded the bank limit',
+    ];
+    return failureMessages.any(normalized.contains);
+  }
 
   double? _findAmount(String text, double expected) {
     final matches = RegExp(
