@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -21,12 +19,11 @@ class StorageService {
     required String paymentId,
     required XFile screenshot,
   }) async {
-    final file = File(screenshot.path);
-
-    if (!file.existsSync()) {
+    final bytes = await screenshot.readAsBytes();
+    if (bytes.isEmpty) {
       throw 'The selected screenshot could not be read. Please pick it again.';
     }
-    if (file.lengthSync() > AppConstants.maxScreenshotBytes) {
+    if (bytes.length > AppConstants.maxScreenshotBytes) {
       throw 'The screenshot is too large. Please choose an image under 5 MB.';
     }
 
@@ -45,8 +42,11 @@ class StorageService {
         },
       );
 
-      final task = await ref.putFile(file, metadata);
-      return await task.ref.getDownloadURL();
+      final snapshot = await ref.putData(bytes, metadata);
+      if (snapshot.state != TaskState.success) {
+        throw 'The screenshot upload did not complete. Please try again.';
+      }
+      return await snapshot.ref.getDownloadURL();
     } catch (e) {
       throw AppHelpers.friendlyError(e);
     }

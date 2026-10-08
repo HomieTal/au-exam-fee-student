@@ -27,7 +27,7 @@ service firebase.storage {
       // Students upload only into their own folder.
       allow create: if isSignedIn()
         && request.auth.uid == studentUid
-        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.size <= 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
 
       // Proofs are immutable once uploaded (students cannot overwrite or

@@ -285,6 +285,12 @@ flutter build apk --release --split-per-abi
 flutter build appbundle --release
 ```
 
+For direct Android downloads, publish the ABI-split APK matching the device:
+`app-arm64-v8a-release.apk` for most modern phones, `app-armeabi-v7a-release.apk`
+for older 32-bit ARM phones, and `app-x86_64-release.apk` for x86_64 devices.
+Do not distribute the debug APK; it is much larger and is not optimized for
+release.
+
 Release APKs are signed with the debug keystore by default. For distribution,
 add a signing config in `android/app/build.gradle.kts` → `buildTypes.release`
 (`signingConfigs` with your keystore), then rebuild.
